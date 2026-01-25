@@ -1,0 +1,55 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
+
+:root {
+  /* Warm Beige / Editorial Palette */
+  --color-cream: #F5F2EB;
+  --color-stone: #1C1917;
+  --color-gold: #C6A87C;
+  --color-olive: #4A5D23;
+  --color-wine: #5D232F;
+  
+  --background: 40 23% 94%; /* #F5F2EB (Cream) */
+  --foreground: 24 10% 10%; /* #1C1917 (Stone) */
+}
+
+.light {
+  --background: 40 23% 94%;
+  --foreground: 24 10% 10%;
+}
+
+/* Dark Mode - Deep Charcoal instead of Slate */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: 24 10% 10%;
+    --foreground: 40 23% 94%;
+  }
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.5s ease, color 0.5s ease;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Playfair Display', serif;
+}
+
+/* Custom Scrollbar - Minimalist */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background-color: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background-color: #C6A87C; /* Gold */
+  border-radius: 0;
+}
+::-webkit-scrollbar-thumb:hover {
+  background-color: #A38860;
+}
