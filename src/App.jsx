@@ -2,41 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Shield, Sparkles, ChevronRight, Moon, Sun, Crown } from 'lucide-react';
 import Dashboard from './components/Dashboard';
+import LandingPage from './components/LandingPage';
 import { useTheme } from './context/ThemeContext';
 import { cn } from './utils';
 import { useSupabaseData } from './hooks/useSupabaseData';
 
-// Feature Card
-const FeatureCard = ({ icon: Icon, title, description }) => {
-  const { theme } = useTheme();
-  
-  return (
-    <motion.div 
-      whileHover={{ y: -5 }}
-      className={cn(
-        "p-8 border transition-all duration-300 group",
-        theme === 'light' 
-          ? "bg-white border-stone-200 hover:border-stone-400 hover:shadow-lg" 
-          : "bg-stone-900/50 border-stone-800 hover:border-gold-500/30 hover:bg-stone-900"
-      )}
-    >
-      <div className={cn(
-        "w-12 h-12 flex items-center justify-center mb-6 transition-colors",
-        theme === 'light' ? "bg-stone-100 text-stone-900" : "bg-stone-800 text-gold-500"
-      )}>
-        <Icon className="w-6 h-6" />
-      </div>
-      <h3 className={cn(
-        "text-xl font-serif font-bold mb-3",
-        theme === 'light' ? "text-stone-900" : "text-stone-50"
-      )}>{title}</h3>
-      <p className={cn(
-        "leading-relaxed",
-        theme === 'light' ? "text-stone-600" : "text-stone-400"
-      )}>{description}</p>
-    </motion.div>
-  );
-};
+
 
 // Login Page
 function LoginPage({ onLogin }) {
@@ -67,9 +38,9 @@ function LoginPage({ onLogin }) {
         >
           <div className={cn(
             "w-16 h-16 flex items-center justify-center rounded-2xl shadow-2xl skew-y-3",
-            theme === 'light' ? "bg-stone-900 text-gold-500" : "bg-stone-800 text-gold-500"
+            theme === 'light' ? "bg-stone-900" : "bg-stone-800"
           )}>
-            <Crown className="w-8 h-8" />
+            <Crown className="w-8 h-8" color="#C6A87C" />
           </div>
           <h1 className="font-serif text-3xl font-bold tracking-tight">Family Manager</h1>
           <p className={cn("text-sm uppercase tracking-widest", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
@@ -132,6 +103,7 @@ import { supabase } from './supabaseClient';
 function App() {
   const [session, setSession] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [showLogin, setShowLogin] = useState(false);
   const { theme } = useTheme();
 
   const signInWithGoogle = async () => {
@@ -145,6 +117,7 @@ function App() {
   const signOut = async () => {
     if (!supabase) return;
     await supabase.auth.signOut();
+    setSession(null); // Force local clear
   };
 
   const claimData = async (userId) => {
@@ -161,9 +134,16 @@ function App() {
       return;
     }
 
+    // Failsafe timeout
+    const timeout = setTimeout(() => setIsInitializing(false), 3000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsInitializing(false);
+      clearTimeout(timeout);
+    }).catch(() => {
+      setIsInitializing(false);
+      clearTimeout(timeout);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -174,22 +154,28 @@ function App() {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      subscription.unsubscribe();
+      clearTimeout(timeout);
+    };
   }, []);
 
   if (isInitializing) {
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center font-serif italic",
-        theme === 'light' ? "bg-stone-50 text-stone-300" : "bg-stone-950 text-stone-800"
+        "min-h-screen flex items-center justify-center font-serif italic text-center",
+        theme === 'light' ? "bg-stone-50 text-stone-900" : "bg-stone-950 text-stone-50"
       )}>
-        Establishing secure connection...
+        <p className="animate-pulse">Establishing secure connection...</p>
       </div>
     );
   }
 
   if (!session) {
-    return <LoginPage onLogin={signInWithGoogle} />;
+    if (showLogin) {
+      return <LoginPage onLogin={signInWithGoogle} />;
+    }
+    return <LandingPage onGoToLogin={() => setShowLogin(true)} />;
   }
 
   return <Dashboard key={session.user.id} onLogout={signOut} />;

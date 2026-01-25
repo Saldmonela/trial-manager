@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
   Plus, 
@@ -36,9 +36,11 @@ import {
   getDaysRemaining,
   getExpiryStatus
 } from '../hooks/useLocalStorage';
-import { useSupabaseData } from '../hooks/useSupabaseData'; // Import Hook
+import { useSupabaseData } from '../hooks/useSupabaseData';
+import { supabase } from '../supabaseClient';
 import MigrationTool from './MigrationTool';
 import { useTheme } from '../context/ThemeContext';
+import TutorialModal from './TutorialModal';
 
 // Family Card Component
 // Family Card Component
@@ -909,6 +911,8 @@ function DeleteConfirmationModal({ isOpen, onClose, onConfirm, familyName }) {
   );
 }
 
+
+
 // Main Dashboard Component
 export default function Dashboard({ onLogout }) {
   const { theme, toggleTheme } = useTheme();
@@ -917,6 +921,41 @@ export default function Dashboard({ onLogout }) {
   
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
   const [editFamily, setEditFamily] = useState(null);
+  // Tutorial State
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  useEffect(() => {
+    async function checkTutorialStatus() {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Use a combined key of userId so different users on same PC don't conflict
+      const tourKey = `fm_tour_seen_${user.id}`;
+      const hasSeen = localStorage.getItem(tourKey);
+      
+      // Also check if the user is "new" (created within the last 10 minutes)
+      // This ensures existing users don't get bothered by the new tutorial 
+      // even if they haven't seen it yet on this specific browser.
+      const createdAt = new Date(user.created_at).getTime();
+      const tenMinutes = 10 * 60 * 1000;
+      const isNewUser = (Date.now() - createdAt) < tenMinutes;
+
+      if (!hasSeen && isNewUser) {
+        setTimeout(() => setShowTutorial(true), 2000);
+      }
+    }
+    
+    checkTutorialStatus();
+  }, []);
+
+  const handleTutorialClose = async () => {
+    setShowTutorial(false);
+    const { data: { user } } = await supabase.auth.getUser();
+    if (user) {
+      localStorage.setItem(`fm_tour_seen_${user.id}`, 'true');
+    }
+  };
+
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
@@ -1083,6 +1122,18 @@ export default function Dashboard({ onLogout }) {
           <div className="flex items-center gap-4">
             {/* Theme Toggle */}
             <button
+               onClick={() => setShowTutorial(true)}
+               className={cn(
+                 "p-2 rounded-full transition-colors flex items-center gap-2 px-3",
+                 theme === 'light' ? "hover:bg-stone-200 text-stone-600" : "hover:bg-stone-800 text-stone-400"
+               )}
+               title="Restart Tour"
+            >
+              <Sparkles className="w-4 h-4 text-gold-500" />
+              <span className="text-[10px] uppercase tracking-widest font-bold">Help</span>
+            </button>
+
+            <button
               onClick={toggleTheme}
               className={cn(
                 "p-2 rounded-full transition-colors",
@@ -1094,6 +1145,7 @@ export default function Dashboard({ onLogout }) {
               {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
             </button>
             <button
+              id="tour-new-family"
               onClick={() => setIsAddFamilyOpen(true)}
               className={cn(
                  "flex items-center gap-2 px-6 py-2.5 font-medium rounded-none transition-all shadow-sm",
@@ -1132,7 +1184,7 @@ export default function Dashboard({ onLogout }) {
         {/* Search Bar - Minimalist */}
         <div className="mb-10">
           <div className="flex gap-4">
-            <div className="relative flex-1 group">
+            <div id="tour-search" className="relative flex-1 group">
               <Search className={cn(
                 "absolute left-0 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors duration-300",
                 theme === 'light' ? "text-stone-400 group-focus-within:text-stone-900" : "text-stone-500 group-focus-within:text-stone-50"
@@ -1240,7 +1292,7 @@ export default function Dashboard({ onLogout }) {
 
         {/* Stats */}
         {/* Stats - Editorial Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-0 border-t border-l border-r mb-12 select-none" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
+        <div id="tour-stats" className="grid grid-cols-2 md:grid-cols-4 gap-0 border-t border-l border-r mb-12 select-none" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
           {[
             { label: 'Total Families', value: stats.total, color: theme === 'light' ? 'text-stone-900' : 'text-stone-50' },
             { label: 'Full Capacity', value: `${stats.full}/${families.length}`, color: theme === 'light' ? 'text-stone-500' : 'text-stone-400' },
@@ -1320,45 +1372,65 @@ export default function Dashboard({ onLogout }) {
 
         {/* Family Grid */}
         {sortedFamilies.length === 0 ? (
-          <div className={cn(
-            "text-center py-24 px-6 border-2 border-dashed rounded-none transition-all",
-            theme === 'light' ? "border-stone-200 bg-stone-50/50" : "border-stone-800 bg-stone-900/50"
-          )}>
-            <div className={cn(
-              "w-20 h-20 mx-auto mb-6 flex items-center justify-center rounded-full",
-              theme === 'light' ? "bg-stone-100 text-stone-300" : "bg-stone-800 text-stone-600"
-            )}>
-              <Sparkles className="w-10 h-10" />
+          <motion.div 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={cn(
+              "relative text-center py-24 px-8 overflow-hidden group border",
+              theme === 'light' 
+                ? "bg-white border-stone-200 shadow-xl" 
+                : "bg-stone-900 border-stone-800 shadow-2xl"
+            )}
+          >
+            {/* Artistic Background Element */}
+            <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-gold-500/5 rounded-full blur-[100px] pointer-events-none" />
+            
+            <div className="relative z-10 flex flex-col items-center">
+              <motion.div 
+                whileHover={{ rotate: 15, scale: 1.1 }}
+                className={cn(
+                  "w-24 h-24 mb-8 flex items-center justify-center rounded-3xl shadow-2xl relative",
+                  theme === 'light' ? "bg-stone-900 text-gold-500" : "bg-stone-800 text-gold-500"
+                )}
+              >
+                <div className="absolute inset-0 bg-gold-500/20 blur-xl rounded-full scale-75 group-hover:scale-125 transition-transform duration-700" />
+                <Crown className="w-10 h-10 relative z-10" color="#C6A87C" />
+              </motion.div>
+              
+              <h3 className={cn(
+                "text-4xl font-serif font-bold mb-6 tracking-tight",
+                theme === 'light' ? "text-stone-900" : "text-stone-50"
+              )}>
+                Begin Your <span className="text-gold-500 italic">Collection</span>
+              </h3>
+              
+              <p className={cn(
+                "max-w-md mx-auto mb-12 text-lg font-light leading-relaxed",
+                theme === 'light' ? "text-stone-500" : "text-stone-400"
+              )}>
+                Experience a new level of organization for your Google AI Family Plans. 
+                Everything you need, presented with pure editorial elegance.
+              </p>
+              
+              <button
+                 onClick={() => setIsAddFamilyOpen(true)}
+                 className={cn(
+                   "group relative inline-flex items-center gap-4 px-10 py-5 font-bold rounded-none text-xs uppercase tracking-[0.3em] transition-all hover:-translate-y-1 shadow-2xl overflow-hidden",
+                   theme === 'light'
+                     ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
+                     : "bg-white text-stone-900 hover:bg-stone-200"
+                 )}
+              >
+                <div className="absolute inset-x-0 bottom-0 h-1 bg-gold-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500Origin-left" />
+                <Plus className="w-4 h-4" />
+                Add Your First Family
+              </button>
+
+              <p className={cn("mt-8 text-[10px] uppercase tracking-widest opacity-40 italic", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
+                Securely synced with Supabase Cloud
+              </p>
             </div>
-            
-            <h3 className={cn(
-              "text-3xl font-serif font-bold mb-4",
-              theme === 'light' ? "text-stone-900" : "text-stone-50"
-            )}>
-              No family plans yet
-            </h3>
-            
-            <p className={cn(
-              "max-w-md mx-auto mb-10 text-lg font-light leading-relaxed",
-              theme === 'light' ? "text-stone-500" : "text-stone-400"
-            )}>
-              Start managing your premium accounts with elegance. <br/>
-              Add your first Family Plan to get started.
-            </p>
-            
-            <button
-               onClick={() => setIsAddFamilyOpen(true)}
-               className={cn(
-                 "group relative inline-flex items-center gap-3 px-8 py-4 font-bold rounded-none text-xs uppercase tracking-[0.2em] transition-all hover:-translate-y-1 shadow-xl",
-                 theme === 'light'
-                   ? "bg-stone-900 text-stone-50 hover:bg-stone-800 shadow-stone-900/10"
-                   : "bg-stone-50 text-stone-900 hover:bg-stone-200 shadow-stone-50/10"
-               )}
-            >
-              <Plus className="w-4 h-4" />
-              Add Your First Family
-            </button>
-          </div>
+          </motion.div>
         ) : (
           <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
             <AnimatePresence>
@@ -1407,6 +1479,9 @@ export default function Dashboard({ onLogout }) {
             onAdd={handleAddMember}
             familyId={addMemberFamilyId}
           />
+        )}
+        {showTutorial && (
+           <TutorialModal onClose={handleTutorialClose} />
         )}
       </AnimatePresence>
 
