@@ -39,27 +39,42 @@ export default function TutorialModal({ onClose }) {
       return;
     }
 
+    let animationFrame;
     const updateCoords = () => {
       const step = TOUR_STEPS[currentStep];
+      if (!step) return;
+      
       const el = document.getElementById(step.targetId);
       if (el) {
         const rect = el.getBoundingClientRect();
         setCoords({
-          top: rect.top + window.scrollY,
-          left: rect.left + window.scrollX,
+          top: rect.top,
+          left: rect.left,
           width: rect.width,
           height: rect.height,
           stepPosition: step.position
         });
-        
-        // Scroll to element
-        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        animationFrame = requestAnimationFrame(updateCoords);
       }
     };
 
-    updateCoords();
+    // Scroll to element once
+    const step = TOUR_STEPS[currentStep];
+    const el = document.getElementById(step.targetId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    // Start continuous tracking
+    animationFrame = requestAnimationFrame(updateCoords);
     window.addEventListener('resize', updateCoords);
-    return () => window.removeEventListener('resize', updateCoords);
+    window.addEventListener('scroll', updateCoords, true);
+
+    return () => {
+      cancelAnimationFrame(animationFrame);
+      window.removeEventListener('resize', updateCoords);
+      window.removeEventListener('scroll', updateCoords, true);
+    };
   }, [currentStep]);
 
   const handleNext = () => {
@@ -85,7 +100,7 @@ export default function TutorialModal({ onClose }) {
             width: coords.width + 16,
             height: coords.height + 16,
           }}
-          className="absolute bg-white/10 border-2 border-gold-500 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] mix-blend-overlay"
+          className="fixed bg-white/10 border-2 border-gold-500 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] mix-blend-overlay"
           transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         />
       )}
@@ -127,22 +142,27 @@ export default function TutorialModal({ onClose }) {
             /* Tooltip Overlay */
             <motion.div
               key={currentStep}
-              style={{
-                top: coords ? (coords.top + coords.height + 24) : '50%',
-                left: coords ? (coords.left + coords.width / 2) : '50%',
-                transform: 'translateX(-50%)',
-                position: 'fixed'
-              }}
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, scale: 0.95, y: 20, x: '-50%' }}
+              animate={coords ? {
+                opacity: 1, 
+                scale: 1,
+                y: 0,
+                x: '-50%',
+                // On Mobile: always fixed at bottom. On Desktop: follow coords
+                top: window.innerWidth < 768 ? 'auto' : (coords.top + coords.height + 24),
+                bottom: window.innerWidth < 768 ? '32px' : 'auto',
+                left: window.innerWidth < 768 ? '50%' : (coords.left + (coords.width / 2)),
+              } : { opacity: 1, y: 0, scale: 1, x: '-50%', top: '50%', left: '50%' }}
+              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
               className={cn(
-                "w-[340px] p-6 shadow-2xl pointer-events-auto relative",
+                "fixed z-[110] p-6 shadow-2xl pointer-events-auto transition-colors",
+                "w-[92%] md:w-[360px] rounded-2xl md:rounded-none", 
                 theme === 'light' ? "bg-white text-stone-900 border border-stone-200" : "bg-stone-900 text-stone-50 border border-stone-800"
               )}
             >
-              {/* Arrow */}
+              {/* Arrow - Hidden on mobile */}
               <div className={cn(
-                "absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rotate-45 border-t border-l",
+                "hidden md:block absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rotate-45 border-t border-l",
                 theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
               )} />
               

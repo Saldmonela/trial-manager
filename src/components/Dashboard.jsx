@@ -84,7 +84,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember }) {
 
   return (
     <motion.div
-      layout
+      layout="position"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, scale: 0.9 }}
@@ -960,6 +960,7 @@ export default function Dashboard({ onLogout }) {
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('created'); // 'created', 'expiry', 'storage'
+  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' or 'desc'
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
   const [showMigration, setShowMigration] = useState(false); // Default false, only show if user wants to import.
@@ -1036,27 +1037,36 @@ export default function Dashboard({ onLogout }) {
     });
 
     return filtered.sort((a, b) => {
+      let comparison = 0;
+      
       if (sortBy === 'expiry') {
-        // Sort by expiry date (farthest first)
-        // If no expiry, put at the bottom
-        if (!a.expiryDate) return 1;
-        if (!b.expiryDate) return -1;
-        return new Date(b.expiryDate) - new Date(a.expiryDate);
-      }
-      if (sortBy === 'storage') {
-        // Sort by storage remaining (most remaining first)
+        const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0;
+        const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
+        comparison = dateB - dateA; // Default Desc (farthest first)
+      } else if (sortBy === 'storage') {
         const storageA = a.storageUsed || 0;
         const storageB = b.storageUsed || 0;
-        return storageB - storageA; // Descending order (largest used first per request "sisa storage terbanyak"?? wait.. request says "sisa storage terbanyak". Usually mean "most available". But maybe "storage used" is easier to track. Let's stick with "Storage Used High to Low" as it seems to be what is meant effectively or usually desired to see unused accounts. ACTUALLY user said "sisa storage terbanyak" = Most Storage Remaining. So smallest `storageUsed` first.
-        // Correction: "sisa storage terbanyak" = most remaining storage.
-        // So we should sort by (MAX - storageUsed) descending.
-        // Which is equivalent to storageUsed ascending.
-        // Let's do storageUsed Ascending (Smallest used first).
-        return storageA - storageB;
+        comparison = storageB - storageA; // Default Desc (largest used first) wait default was storageA - storageB??
+        // Let's stick to consistent default: Descending means "High to Low".
+        // For storage: High Used -> Low Used (desc). Low Used -> High Used (asc).
+      } else {
+        // Default: created
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        comparison = dateB - dateA; // Default Desc (Newest first)
       }
-      // Default: created
-      return new Date(b.createdAt) - new Date(a.createdAt);
+
+      return sortDirection === 'asc' ? -comparison : comparison;
     });
+  };
+
+  const handleSortClick = (key) => {
+    if (sortBy === key) {
+      setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortBy(key);
+      setSortDirection('desc'); // Reset to desc default for new key
+    }
   };
 
   const sortedFamilies = getSortedFamilies();
@@ -1099,27 +1109,27 @@ export default function Dashboard({ onLogout }) {
           ? "bg-stone-50/90 border-stone-200" 
           : "bg-stone-950/90 border-stone-800"
       )}>
-        <div className="container mx-auto px-6 py-6 flex items-center justify-between">
-          <div>
+        <div className="container mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col md:flex-row gap-4 items-center justify-between">
+          <div className="text-center md:text-left">
             <h1 className={cn(
-               "font-serif text-2xl font-bold tracking-tight",
+               "font-serif text-xl md:text-2xl font-bold tracking-tight",
                theme === 'light' ? "text-stone-900" : "text-white"
             )}>
               Google AI <span className="text-gold-500 italic">Family</span> Manager
             </h1>
-            <div className="flex items-center gap-2 mt-1">
-               <p className="text-xs uppercase tracking-[0.2em] opacity-60">Premium Dashboard</p>
+            <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
+               <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-60">Premium Dashboard</p>
                <span className="text-stone-300 dark:text-stone-700">|</span>
                 <button 
                   onClick={onLogout}
-                  className="text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
+                  className="text-[10px] md:text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
                 >
                   Log Out
                 </button>
             </div>
           </div>
           
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-center md:justify-end">
             {/* Theme Toggle */}
             <button
                onClick={() => setShowTutorial(true)}
@@ -1130,7 +1140,7 @@ export default function Dashboard({ onLogout }) {
                title="Restart Tour"
             >
               <Sparkles className="w-4 h-4 text-gold-500" />
-              <span className="text-[10px] uppercase tracking-widest font-bold">Help</span>
+              <span className="text-[10px] uppercase tracking-widest font-bold hidden md:inline">Help</span>
             </button>
 
             <button
@@ -1148,7 +1158,7 @@ export default function Dashboard({ onLogout }) {
               id="tour-new-family"
               onClick={() => setIsAddFamilyOpen(true)}
               className={cn(
-                 "flex items-center gap-2 px-6 py-2.5 font-medium rounded-none transition-all shadow-sm",
+                 "flex items-center gap-2 px-4 py-2 md:px-6 md:py-2.5 font-medium rounded-none transition-all shadow-sm text-xs md:text-base whitespace-nowrap",
                  theme === 'light'
                   ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
                   : "bg-stone-50 text-stone-900 hover:bg-stone-200"
@@ -1292,7 +1302,7 @@ export default function Dashboard({ onLogout }) {
 
         {/* Stats */}
         {/* Stats - Editorial Grid */}
-        <div id="tour-stats" className="grid grid-cols-2 md:grid-cols-4 gap-0 border-t border-l border-r mb-12 select-none" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
+        <div id="tour-stats" className="grid grid-cols-2 md:grid-cols-4 gap-0 border-t border-l mb-12 select-none" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
           {[
             { label: 'Total Families', value: stats.total, color: theme === 'light' ? 'text-stone-900' : 'text-stone-50' },
             { label: 'Full Capacity', value: `${stats.full}/${families.length}`, color: theme === 'light' ? 'text-stone-500' : 'text-stone-400' },
@@ -1306,7 +1316,7 @@ export default function Dashboard({ onLogout }) {
               <span className={cn("text-xs uppercase tracking-[0.2em] font-medium", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
                 {stat.label}
               </span>
-              <span className={cn("font-serif text-5xl font-bold tracking-tighter mt-2", stat.color)}>
+              <span className={cn("font-serif text-3xl lg:text-5xl font-bold tracking-tighter mt-2 break-all", stat.color)}>
                 {stat.value}
               </span>
             </div>
@@ -1345,19 +1355,19 @@ export default function Dashboard({ onLogout }) {
           </div>
 
           {/* Sort Options */}
-          <div className="flex items-center gap-4">
-            <span className={cn("text-xs uppercase tracking-widest", theme === 'light' ? "text-stone-400" : "text-stone-600")}>Sort By:</span>
-            <div className="flex gap-2">
+          <div className="flex flex-wrap items-center gap-2 md:gap-4">
+            <span className={cn("text-xs uppercase tracking-widest mr-2", theme === 'light' ? "text-stone-400" : "text-stone-600")}>Sort By:</span>
+            <div className="flex flex-wrap gap-2">
               {[
-                { key: 'created', label: 'Newest' },
-                { key: 'expiry', label: 'Renewal' },
-                { key: 'storage', label: 'Storage' }
+                { key: 'created', label: sortDirection === 'desc' ? 'Newest' : 'Oldest' },
+                { key: 'expiry', label: sortDirection === 'desc' ? 'Farthest' : 'Closest' },
+                { key: 'storage', label: sortDirection === 'desc' ? 'Most Used' : 'Least Used' }
               ].map((s) => (
                 <button
                   key={s.key}
-                  onClick={() => setSortBy(s.key)}
+                  onClick={() => handleSortClick(s.key)}
                   className={cn(
-                    "px-3 py-1 text-xs uppercase tracking-wider font-medium border transition-all",
+                    "px-2 py-1 text-[10px] md:text-xs md:px-3 uppercase tracking-wider font-medium border transition-all whitespace-nowrap",
                     sortBy === s.key 
                       ? (theme === 'light' ? "bg-stone-900 text-stone-50 border-stone-900" : "bg-stone-50 text-stone-900 border-stone-50")
                       : (theme === 'light' ? "text-stone-400 border-transparent hover:border-stone-200" : "text-stone-500 border-transparent hover:border-stone-800")
@@ -1432,7 +1442,7 @@ export default function Dashboard({ onLogout }) {
             </div>
           </motion.div>
         ) : (
-          <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-4 items-start">
+          <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             <AnimatePresence>
               {sortedFamilies.map((family) => (
                 <FamilyCard 
