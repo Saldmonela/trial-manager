@@ -9,6 +9,8 @@ export function useSupabaseData() {
   useEffect(() => {
     fetchFamilies();
 
+    if (!supabase) return;
+
     // Realtime subscription (Optional for simple use)
     const subscription = supabase
       .channel('public:families')
@@ -175,13 +177,21 @@ export function useSupabaseData() {
 
   // --- Auth ---
   async function signInWithGoogle() {
+    if (!supabase) {
+      alert("Configuration Error: Supabase connection is missing. Please check Vercel Environment Variables.");
+      return;
+    }
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
       });
       if (error) throw error;
     } catch (error) {
        console.error("Error signing in:", error);
+       alert("Login Failed: " + error.message);
     }
   }
 

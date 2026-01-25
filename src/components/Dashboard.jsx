@@ -1031,12 +1031,18 @@ export default function Dashboard() {
   };
 
   if (loading) {
+    // Failsafe: if loading takes too long, show error hints
+    setTimeout(() => {
+      const el = document.getElementById('loading-text');
+      if (el) el.innerHTML = "Still loading...<br/><span class='text-xs opacity-70'>Check your internet or Supabase connection.</span>";
+    }, 5000);
+
     return (
       <div className={cn(
-        "min-h-screen flex items-center justify-center font-serif italic",
+        "min-h-screen flex items-center justify-center font-serif italic text-center",
         theme === 'light' ? "bg-stone-50 text-stone-400" : "bg-stone-950 text-stone-600"
       )}>
-        Loading dashboard...
+        <p id="loading-text">Loading dashboard...</p>
       </div>
     );
   }
@@ -1136,7 +1142,7 @@ export default function Dashboard() {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search database..."
+                placeholder="Search families, emails, or members"
                 className={cn(
                   "w-full pl-8 pr-4 py-3 bg-transparent border-b-2 font-serif text-lg focus:outline-none transition-all duration-300",
                   theme === 'light' 
