@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Users, Shield, Sparkles, ChevronRight, Moon, Sun, Crown } from 'lucide-react';
 import Dashboard from './components/Dashboard';
@@ -122,40 +122,78 @@ function LoginPage({ onLogin }) {
   );
 }
 
+import { supabase } from './supabaseClient';
+
+// Features (not shown for brevity, keeping same)
+// FeatureCard ...
+// LoginPage ...
+
 // Main App
 function App() {
   const [session, setSession] = useState(null);
-  const { signInWithGoogle } = useSupabaseData();
-  
-  // Note: we're using a simple session check here. 
-  // In a real app we'd likely expose the session from useSupabaseData nicely
-  // But for now, we rely on the component mount logic in Dashboard or similar.
-  // Actually, to make the Login Page switch to Dashboard, we need to know auth state.
-  
-  // Let's hook into Supabase Auth directly here for the router
-  React.useEffect(() => {
-    import('./supabaseClient').then(({ supabase }) => {
-       if(supabase) {
-           supabase.auth.getSession().then(({ data: { session } }) => {
-             setSession(session);
-           });
-    
-           const {
-             data: { subscription },
-           } = supabase.auth.onAuthStateChange((_event, session) => {
-             setSession(session);
-           });
-           return () => subscription.unsubscribe();
-       }
+  const [isInitializing, setIsInitializing] = useState(true);
+  const { theme } = useTheme();
+
+  const signInWithGoogle = async () => {
+    if (!supabase) return;
+    await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo: window.location.origin }
     });
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    await supabase.auth.signOut();
+  };
+
+  const claimData = async (userId) => {
+    if (!supabase) return;
+    const { count } = await supabase.from('families').select('*', { count: 'exact', head: true }).is('user_id', null);
+    if (count > 0) {
+      await supabase.from('families').update({ user_id: userId }).is('user_id', null);
+    }
+  };
+
+  useEffect(() => {
+    if (!supabase) {
+      setIsInitializing(false);
+      return;
+    }
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setIsInitializing(false);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setSession(session);
+      setIsInitializing(false);
+      if (event === 'SIGNED_IN' && session?.user) {
+        claimData(session.user.id);
+      }
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
+  if (isInitializing) {
+    return (
+      <div className={cn(
+        "min-h-screen flex items-center justify-center font-serif italic",
+        theme === 'light' ? "bg-stone-50 text-stone-300" : "bg-stone-950 text-stone-800"
+      )}>
+        Establishing secure connection...
+      </div>
+    );
+  }
 
   if (!session) {
     return <LoginPage onLogin={signInWithGoogle} />;
   }
 
-  return <Dashboard key={session.user.id} />;
+  return <Dashboard key={session.user.id} onLogout={signOut} />;
 }
 
 export default App;
+

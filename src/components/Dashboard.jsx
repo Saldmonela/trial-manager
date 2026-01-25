@@ -910,10 +910,10 @@ function DeleteConfirmationModal({ isOpen, onClose, onConfirm, familyName }) {
 }
 
 // Main Dashboard Component
-export default function Dashboard() {
+export default function Dashboard({ onLogout }) {
   const { theme, toggleTheme } = useTheme();
   // Supabase Integration
-  const { families, loading, addFamily, updateFamily, deleteFamily, addMember, removeMember, signOut } = useSupabaseData();
+  const { families, loading, addFamily, updateFamily, deleteFamily, addMember, removeMember } = useSupabaseData();
   
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
   const [editFamily, setEditFamily] = useState(null);
@@ -1071,12 +1071,12 @@ export default function Dashboard() {
             <div className="flex items-center gap-2 mt-1">
                <p className="text-xs uppercase tracking-[0.2em] opacity-60">Premium Dashboard</p>
                <span className="text-stone-300 dark:text-stone-700">|</span>
-               <button 
-                 onClick={signOut}
-                 className="text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
-               >
-                 Log Out
-               </button>
+                <button 
+                  onClick={onLogout}
+                  className="text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
+                >
+                  Log Out
+                </button>
             </div>
           </div>
           

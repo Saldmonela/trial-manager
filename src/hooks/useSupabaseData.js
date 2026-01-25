@@ -7,15 +7,15 @@ export function useSupabaseData() {
 
   // Fetch initial data & subscribe to changes
   useEffect(() => {
-    fetchFamilies();
-
     if (!supabase) return;
+    
+    fetchFamilies();
 
     // Realtime subscription (Optional for simple use)
     const subscription = supabase
       .channel('public:families')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'families' }, fetchFamilies)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, fetchFamilies) // naive refresh
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'members' }, fetchFamilies) 
       .subscribe();
 
     return () => {
@@ -25,12 +25,12 @@ export function useSupabaseData() {
 
   async function fetchFamilies() {
     if (!supabase) {
-      console.warn('Supabase is not configured yet.');
       setLoading(false);
       return;
     }
     try {
       setLoading(true);
+      
       const { data: familiesData, error: familiesError } = await supabase
         .from('families')
         .select('*');
@@ -46,7 +46,6 @@ export function useSupabaseData() {
        // Merge members into families for frontend compatibility
        const mergedData = (familiesData || []).map(family => ({
          ...family,
-         // Map snake_case to camelCase for existing frontend
          ownerEmail: family.owner_email,
          ownerPassword: family.owner_password,
          expiryDate: family.expiry_date,
@@ -71,38 +70,33 @@ export function useSupabaseData() {
   async function addFamily(family) {
     const { id, name, ownerEmail, ownerPassword, expiryDate, storageUsed, notes, createdAt } = family;
     
-    // Get current user
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Optimistic Update
     setFamilies(prev => [...prev, family]);
 
     const { error } = await supabase
       .from('families')
       .insert([{
         id,
-        user_id: user?.id, // Explicitly link to user
+        user_id: user?.id,
         name,
         owner_email: ownerEmail,
         owner_password: ownerPassword,
         expiry_date: expiryDate,
-        storage_used: storageUsed,
+        storage_used: Number(storageUsed) || 0,
         notes,
         created_at: createdAt
       }]);
 
     if (error) {
        console.error("Error creating family:", error);
-       fetchFamilies(); // Revert on error
+       fetchFamilies(); 
     }
   }
 
   async function updateFamily(updatedFamily) {
      const { id, name, ownerEmail, ownerPassword, expiryDate, storageUsed, notes } = updatedFamily;
-     
-     // Optimistic Update
      setFamilies(prev => prev.map(f => f.id === id ? updatedFamily : f));
-
      const { error } = await supabase
        .from('families')
        .update({
@@ -110,54 +104,31 @@ export function useSupabaseData() {
          owner_email: ownerEmail,
          owner_password: ownerPassword,
          expiry_date: expiryDate,
-         storage_used: storageUsed,
+         storage_used: Number(storageUsed) || 0,
          notes
        })
        .eq('id', id);
-
-      if (error) {
-        console.error("Error updating family:", error);
-        fetchFamilies();
-      }
+      if (error) { fetchFamilies(); }
   }
 
   async function deleteFamily(familyId) {
-    // Optimistic Update
     setFamilies(prev => prev.filter(f => f.id !== familyId));
-
     const { error } = await supabase.from('families').delete().eq('id', familyId);
-     if (error) {
-        console.error("Error deleting family:", error);
-        fetchFamilies();
-      }
+    if (error) { fetchFamilies(); }
   }
 
   async function addMember(familyId, member) {
     const { id, name, email, addedAt } = member;
-
-    // Optimistic Update (Complex, maybe skip or do naive)
-    // Naive local update for responsiveness
     setFamilies(prev => prev.map(f => {
       if (f.id === familyId) {
          return { ...f, members: [...(f.members || []), member] };
       }
       return f;
     }));
-
     const { error } = await supabase
       .from('members')
-      .insert([{
-        id,
-        family_id: familyId,
-        name,
-        email,
-        added_at: addedAt
-      }]);
-    
-    if (error) {
-       console.error("Error adding member:", error);
-       fetchFamilies();
-    }
+      .insert([{ id, family_id: familyId, name, email, added_at: addedAt }]);
+    if (error) { fetchFamilies(); }
   }
 
   async function removeMember(familyId, memberId) {
@@ -167,86 +138,9 @@ export function useSupabaseData() {
       }
       return f;
     }));
-
     const { error } = await supabase.from('members').delete().eq('id', memberId);
-    if (error) {
-       console.error("Error removing member:", error);
-       fetchFamilies();
-    }
+    if (error) { fetchFamilies(); }
   }
-
-  // --- Auth ---
-  async function signInWithGoogle() {
-    if (!supabase) {
-      alert("Configuration Error: Supabase connection is missing. Please check Vercel Environment Variables.");
-      return;
-    }
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: window.location.origin
-        }
-      });
-      if (error) throw error;
-    } catch (error) {
-       console.error("Error signing in:", error);
-       alert("Login Failed: " + error.message);
-    }
-  }
-
-  async function signOut() {
-    const { error } = await supabase.auth.signOut();
-    if (error) console.error("Error signing out:", error);
-    setFamilies([]); // Clear data on sign out
-  }
-
-  // --- Auto Claim Data ---
-  async function claimDataForUser(userId) {
-     // 1. Check if there are orphaned families (user_id is NULL)
-     // In a real app, we might want to be more careful, but for this migration tool
-     // we assume ALL local/anonymous data belongs to the first person who claims it.
-     
-     const { count } = await supabase
-       .from('families')
-       .select('*', { count: 'exact', head: true })
-       .is('user_id', null);
-
-     if (count > 0) {
-       console.log(`Found ${count} orphaned families. Claiming for user ${userId}...`);
-       
-       const { error } = await supabase
-         .from('families')
-         .update({ user_id: userId })
-         .is('user_id', null);
-
-       if (error) {
-         console.error("Error claiming data:", error);
-       } else {
-         console.log("Data successfully claimed!");
-         fetchFamilies(); // Refresh data to show ownership
-       }
-     }
-  }
-  
-  // Listen for Auth Changes
-  useEffect(() => {
-    if (!supabase) return;
-
-    const { data: authListener } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-         console.log("User signed in:", session.user.id);
-         await claimDataForUser(session.user.id);
-         fetchFamilies();
-      } else if (event === 'SIGNED_OUT') {
-         setFamilies([]);
-      }
-    });
-
-    return () => {
-      authListener.subscription.unsubscribe();
-    };
-  }, []);
 
 
   return {
@@ -257,8 +151,6 @@ export function useSupabaseData() {
     deleteFamily,
     addMember,
     removeMember,
-    refetch: fetchFamilies,
-    signInWithGoogle,
-    signOut
+    refetch: fetchFamilies
   };
 }
