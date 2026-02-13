@@ -1,0 +1,8 @@
+- 2026-02-14:  visual pattern to mirror for public cards: , per-card , label , value .
+- 2026-02-14: Public-safe extraction keeps only  and  while preserving admin card proportions () and hover surface behavior.
+- 2026-02-14: Correction - MetricsRow.jsx visual pattern mirrored for public cards: grid grid-cols-2 gap-0 border-t border-l; per-card border-b border-r; label text-[10px] uppercase tracking-[0.2em] font-bold; value font-serif text-3xl lg:text-5xl tracking-tighter.
+- 2026-02-14: Correction - Public-safe extraction keeps only labels Total Families and Available Slots with aspect-[4/3] card proportion and hover surface behavior.
+- 2026-02-14: PublicFiltersBar should mirror FiltersBar visual tokens (dashed divider, active underline motion, chip-like sort controls) while swapping to public tabs (All, Available, Expiring Soon) and public sort labels (Name, Availability, Expiry Date).
+- 2026-02-14: FamilyCardPublic should reuse FamilyCard shell classes verbatim (group border/shadow hover, editorial header block, segmented capacity bar) while keeping only public-safe fields.
+- 2026-02-14: Public slot usage is derived from API-safe availability data via slotsUsed = MAX_FAMILY_SLOTS - slotsAvailable with clamp guards for missing/out-of-range values.
+- 2026-02-14: DashboardPublic sorting should pass a toggle-aware setter into PublicFiltersBar because PublicFiltersBar invokes setSortBy directly and relies on parent state for sortDirection flips.

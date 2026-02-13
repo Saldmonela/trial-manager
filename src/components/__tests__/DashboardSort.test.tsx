@@ -44,9 +44,11 @@ const mockFamilies = [
 ];
 
 const useSupabaseDataMock = vi.fn();
+const useJoinRequestsMock = vi.fn();
 
 vi.mock('../../hooks/useSupabaseData', () => ({
   useSupabaseData: () => useSupabaseDataMock(),
+  useJoinRequests: () => useJoinRequestsMock(),
 }));
 
 describe('Dashboard Sorting', () => {
@@ -59,6 +61,13 @@ describe('Dashboard Sorting', () => {
       deleteFamily: vi.fn(),
       addMember: vi.fn(),
       removeMember: vi.fn(),
+    });
+
+    useJoinRequestsMock.mockReturnValue({
+      joinRequests: [],
+      loading: false,
+      updateStatus: vi.fn(),
+      refetch: vi.fn(),
     });
   });
 

@@ -1,5 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
+import { Link } from 'react-router-dom';
 import { Users, Shield, Sparkles, ChevronRight, Moon, Sun, Crown, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
@@ -84,14 +85,12 @@ export default function LandingPage({ onGoToLogin }) {
           >
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
-          <button 
-            onClick={onGoToLogin}
-            className={cn(
-              "hidden md:block text-xs uppercase tracking-widest font-bold hover:text-gold-500 transition-colors"
-            )}
+          <Link
+            to="/login"
+            className="text-xs uppercase tracking-widest font-bold hover:text-gold-500 transition-colors"
           >
-            {t('auth.continue_google')}
-          </button>
+            Admin Login
+          </Link>
         </div>
       </nav>
 

@@ -1,8 +1,21 @@
-import { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
+import { useState, useEffect, useCallback } from 'react';
+import { supabase, supabasePublic } from '../supabaseClient';
 import { encryptPassword, decryptPassword, isEncrypted } from '../lib/crypto';
 import { debounce } from '../utils/performance';
-import type { Family, FamilyInput, Member, ActionResult, UseSupabaseDataReturn } from '../types';
+import { MAX_FAMILY_SLOTS } from '../lib/familyUtils';
+import type {
+  Family,
+  FamilyInput,
+  Member,
+  ActionResult,
+  JoinRequest,
+  JoinRequestInput,
+  JoinRequestStatus,
+  PublicFamily,
+  UseJoinRequestsReturn,
+  UseSupabaseDataReturn,
+  UsePublicFamiliesReturn,
+} from '../types';
 
 /**
  * Gets the current user's stable ID for encryption key derivation.
@@ -12,6 +25,237 @@ import type { Family, FamilyInput, Member, ActionResult, UseSupabaseDataReturn }
 async function getEncryptionKey(): Promise<string> {
   const { data: { user } } = await supabase!.auth.getUser();
   return user?.id || '';
+}
+
+interface PublicFamilyRow {
+  id: string;
+  name: string | null;
+  expiry_date: string | null;
+  storage_used: number | null;
+}
+
+interface PublicMemberRow {
+  family_id: string;
+}
+
+interface JoinRequestRow {
+  id: string;
+  family_id: string;
+  name?: string;
+  email?: string;
+  note?: string | null;
+  // New schema fields
+  requester_name?: string;
+  requester_email?: string;
+  message?: string | null;
+  status: JoinRequestStatus;
+  created_at: string;
+}
+
+function parsePublicFamilyName(rawName: string | null): { familyName: string; serviceName?: string } {
+  const normalized = (rawName || '').trim();
+  if (!normalized) {
+    return { familyName: 'Family Plan' };
+  }
+
+  const [familyName, ...serviceParts] = normalized.split(',');
+  const trimmedFamilyName = familyName.trim() || normalized;
+  const serviceName = serviceParts.join(',').trim();
+
+  if (!serviceName) {
+    return { familyName: trimmedFamilyName };
+  }
+
+  return {
+    familyName: trimmedFamilyName,
+    serviceName,
+  };
+}
+
+export async function fetchPublicFamilies(): Promise<PublicFamily[]> {
+  // Gunakan supabasePublic untuk memastikan request selalu anonim
+  // dan tidak terganggu oleh session user yang mungkin invalid (401)
+  const client = supabasePublic || supabase;
+  if (!client) return [];
+
+  const { data: rawFamilies, error: familiesError } = await client
+    .from('families')
+    .select('id,name,expiry_date,storage_used');
+
+  if (familiesError) throw familiesError;
+
+  const { data: rawMembers, error: membersError } = await client
+    .from('members')
+    .select('family_id');
+
+  if (membersError) throw membersError;
+
+  const members = (rawMembers || []) as PublicMemberRow[];
+  const memberCountByFamily = members.reduce<Record<string, number>>((acc, member) => {
+    acc[member.family_id] = (acc[member.family_id] || 0) + 1;
+    return acc;
+  }, {});
+
+  const families = (rawFamilies || []) as PublicFamilyRow[];
+
+  return families.map((family) => {
+    const { familyName, serviceName } = parsePublicFamilyName(family.name);
+    const slotsUsed = memberCountByFamily[family.id] || 0;
+
+    return {
+      id: family.id,
+      familyName,
+      serviceName,
+      expiryDate: family.expiry_date,
+      storageUsed: Number(family.storage_used) || 0,
+      slotsAvailable: Math.max(0, MAX_FAMILY_SLOTS - slotsUsed),
+    };
+  });
+}
+
+export function usePublicFamilies(): UsePublicFamiliesReturn {
+  const [families, setFamilies] = useState<PublicFamily[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadPublicFamilies = useCallback(async (): Promise<void> => {
+    try {
+      setLoading(true);
+      setError(null);
+      const publicFamilies = await fetchPublicFamilies();
+      setFamilies(publicFamilies);
+    } catch (err) {
+      console.error('Error fetching public families:', err);
+      setError((err as Error).message || 'Failed to load public families');
+      setFamilies([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadPublicFamilies();
+  }, [loadPublicFamilies]);
+
+  return {
+    families,
+    loading,
+    error,
+    refetch: loadPublicFamilies,
+  };
+}
+
+function mapJoinRequestRow(row: JoinRequestRow): JoinRequest {
+  return {
+    id: row.id,
+    familyId: row.family_id,
+    name: row.requester_name || row.name || 'Unknown',
+    email: row.requester_email || row.email || 'No email',
+    note: row.message || row.note || '',
+    status: row.status,
+    createdAt: row.created_at,
+  };
+}
+
+export async function createJoinRequest(input: JoinRequestInput): Promise<ActionResult> {
+  if (!supabase) {
+    return { success: false, error: 'Supabase is not configured' };
+  }
+
+  try {
+    const id = crypto.randomUUID?.() || Math.random().toString(36).slice(2);
+    // Use the schema from screenshot: requester_name, requester_email, message
+    // Also include name/email/note for redundancy if needed, but primary fields are key.
+    const { error } = await supabase
+      .from('join_requests')
+      .insert([
+        {
+          id,
+          family_id: input.familyId,
+          // Map to correct columns based on user screenshot
+          requester_name: input.name,
+          requester_email: input.email,
+          message: input.note || null,
+          // Keep old columns just in case, or for migration safety
+          name: input.name,
+          email: input.email,
+          note: input.note || null,
+          
+          status: 'pending',
+          created_at: new Date().toISOString(),
+        },
+      ]);
+
+    if (error) throw error;
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: (error as Error).message };
+  }
+}
+
+export function useJoinRequests(): UseJoinRequestsReturn {
+  const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
+  const [loading, setLoading] = useState<boolean>(true);
+
+  const fetchJoinRequests = useCallback(async (): Promise<void> => {
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      // Select ALL relevant columns to support hybrid schema
+      const { data, error } = await supabase
+        .from('join_requests')
+        .select('id,family_id,requester_name,requester_email,message,name,email,note,status,created_at')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const mapped = ((data || []) as any[]).map(mapJoinRequestRow);
+      setJoinRequests(mapped);
+    } catch (error) {
+      console.error('Error fetching join requests:', error);
+      setJoinRequests([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void fetchJoinRequests();
+  }, [fetchJoinRequests]);
+
+  const updateStatus = useCallback(async (requestId: string, status: JoinRequestStatus): Promise<ActionResult> => {
+    if (!supabase) {
+      return { success: false, error: 'Supabase is not configured' };
+    }
+
+    try {
+      const { error } = await supabase
+        .from('join_requests')
+        .update({ status })
+        .eq('id', requestId);
+
+      if (error) throw error;
+
+      setJoinRequests((prev) => prev.map((request) => (
+        request.id === requestId ? { ...request, status } : request
+      )));
+
+      return { success: true };
+    } catch (error) {
+      return { success: false, error: (error as Error).message };
+    }
+  }, []);
+
+  return {
+    joinRequests,
+    loading,
+    refetch: fetchJoinRequests,
+    updateStatus,
+  };
 }
 
 export function useSupabaseData(): UseSupabaseDataReturn {

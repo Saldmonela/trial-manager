@@ -24,16 +24,13 @@ export function useLocalStorage(key, initialValue) {
   return [storedValue, setValue];
 }
 
-export function generateId() {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
 // Re-export for backward compatibility if needed, or just let components import from lib
 // For now, we keep the hook focused on storage, but if components import these from here, we need to export them.
 // Looking at imports in FamilyCard: import { ... } from '../../hooks/useLocalStorage';
 // So we must re-export them.
 
 export {
+  generateId,
   MAX_FAMILY_SLOTS,
   MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,

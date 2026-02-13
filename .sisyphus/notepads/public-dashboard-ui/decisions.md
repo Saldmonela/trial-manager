@@ -1,0 +1,5 @@
+- 2026-02-14:  is a static public variant of admin metrics that reuses the same structural Tailwind primitives but excludes interactive/admin-only status logic.
+- 2026-02-14: Correction - PublicMetricsRow is a static public variant of admin metrics with shared structural Tailwind primitives and no admin-only interactive/status logic.
+- 2026-02-14: PublicFiltersBar keeps mobile sort dropdown behavior parity with FiltersBar using local mobileSortOpen state, because public props expose filter/sort setters but not mobile-open state handlers.
+- 2026-02-14: FamilyCardPublic uses getDaysRemaining -> getExpiryStatus for badge semantics to match admin urgency colors without exposing admin/member credentials.
+- 2026-02-14: DashboardPublic keeps its existing inline public header with Admin Login link instead of importing admin DashboardHeader to preserve public navigation intent.

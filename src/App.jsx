@@ -6,7 +6,8 @@ import { supabase } from './supabaseClient';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Pages
-import Dashboard from './components/Dashboard';
+import DashboardPublic from './components/DashboardPublic';
+import DashboardAdmin from './components/DashboardAdmin';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/auth/LoginPage';
 import ProtectedRoute from './components/auth/ProtectedRoute';
@@ -21,7 +22,7 @@ function App() {
     if (!supabase) return;
     await supabase.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo: window.location.origin + '/dashboard' }
+      options: { redirectTo: window.location.origin + '/admin' }
     });
   };
 
@@ -62,7 +63,7 @@ function App() {
       setIsInitializing(false);
       if (event === 'SIGNED_IN' && session?.user) {
         claimData(session.user.id);
-        navigate('/dashboard');
+        navigate('/admin');
       }
     });
 
@@ -87,14 +88,15 @@ function App() {
     <ErrorBoundary>
       <Routes>
         <Route path="/" element={
-          session ? <Navigate to="/dashboard" replace /> : <LandingPage onGoToLogin={() => navigate('/login')} />
+          session ? <Navigate to="/admin" replace /> : <LandingPage onGoToLogin={() => navigate('/login')} />
         } />
         <Route path="/login" element={
-          session ? <Navigate to="/dashboard" replace /> : <LoginPage onLogin={signInWithGoogle} />
+          session ? <Navigate to="/admin" replace /> : <LoginPage onLogin={signInWithGoogle} />
         } />
-        <Route path="/dashboard" element={
+        <Route path="/dashboard" element={<DashboardPublic />} />
+        <Route path="/admin" element={
           <ProtectedRoute session={session}>
-            <Dashboard key={session?.user?.id} onLogout={signOut} />
+            <DashboardAdmin key={session?.user?.id} onLogout={signOut} />
           </ProtectedRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

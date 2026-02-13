@@ -85,6 +85,48 @@ export interface UseSupabaseDataReturn {
   refetch: () => Promise<void>;
 }
 
+export interface PublicFamily {
+  id: string;
+  familyName: string;
+  serviceName?: string;
+  expiryDate: string | null;
+  storageUsed: number;
+  slotsAvailable: number;
+}
+
+export interface UsePublicFamiliesReturn {
+  families: PublicFamily[];
+  loading: boolean;
+  error?: string | null;
+  refetch: () => Promise<void>;
+}
+
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+
+export interface JoinRequest {
+  id: string;
+  familyId: string;
+  name: string;
+  email: string;
+  note: string;
+  status: JoinRequestStatus;
+  createdAt: string;
+}
+
+export interface JoinRequestInput {
+  familyId: string;
+  name: string;
+  email: string;
+  note?: string;
+}
+
+export interface UseJoinRequestsReturn {
+  joinRequests: JoinRequest[];
+  loading: boolean;
+  refetch: () => Promise<void>;
+  updateStatus: (requestId: string, status: JoinRequestStatus) => Promise<ActionResult>;
+}
+
 export interface UseToastReturn {
   toasts: Toast[];
   addToast: (message: string, type?: ToastType, duration?: number) => number;
