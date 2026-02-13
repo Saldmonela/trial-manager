@@ -2,6 +2,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Users, Shield, Sparkles, ChevronRight, Moon, Sun, Crown, ArrowRight } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { cn } from '../utils';
 
 const FeatureCard = ({ icon: Icon, title, description }) => {
@@ -39,6 +40,7 @@ const FeatureCard = ({ icon: Icon, title, description }) => {
 
 export default function LandingPage({ onGoToLogin }) {
   const { theme, toggleTheme } = useTheme();
+  const { t, language, toggleLanguage } = useLanguage();
 
   return (
     <div className={cn(
@@ -62,6 +64,18 @@ export default function LandingPage({ onGoToLogin }) {
         
         <div className="flex items-center gap-6">
           <button
+            onClick={toggleLanguage}
+            className={cn(
+              "p-2 w-8 h-8 flex items-center justify-center rounded-full transition-colors border text-[10px] font-bold",
+              theme === 'light' 
+                ? "border-stone-200 hover:bg-stone-200 text-stone-600" 
+                : "border-stone-800 hover:bg-stone-900 text-stone-400"
+            )}
+          >
+            {language === 'en' ? 'ID' : 'EN'}
+          </button>
+          
+          <button
             onClick={toggleTheme}
             className={cn(
               "p-3 rounded-full transition-all hover:scale-110",
@@ -76,7 +90,7 @@ export default function LandingPage({ onGoToLogin }) {
               "hidden md:block text-xs uppercase tracking-widest font-bold hover:text-gold-500 transition-colors"
             )}
           >
-            Sign In
+            {t('auth.continue_google')}
           </button>
         </div>
       </nav>
@@ -94,19 +108,19 @@ export default function LandingPage({ onGoToLogin }) {
             theme === 'light' ? "bg-white border-stone-200 text-stone-600" : "bg-stone-900 border-stone-800 text-stone-400"
           )}>
             <Sparkles className="w-3 h-3" color="#C6A87C" />
-            The Future of Family Management
+            {t('landing.hero_tag')}
           </div>
           
           <h1 className="text-6xl md:text-8xl font-serif font-bold mb-8 leading-[1.1] tracking-tight">
-            Master Your <span className="text-gold-500 italic">Premium</span> Ecosystem
+            {t('landing.hero_title')} <span className="text-gold-500 italic">{t('landing.hero_subtitle')}</span>
           </h1>
           
           <p className={cn(
             "text-xl md:text-2xl font-light leading-relaxed mb-12 max-w-2xl mx-auto",
             theme === 'light' ? "text-stone-600" : "text-stone-400"
           )}>
-            The most elegant way to manage your Google AI Family Plans. 
-            Secure, organized, and designed for professionals.
+
+            {t('landing.hero_desc')}
           </p>
           
           <motion.button
@@ -118,7 +132,7 @@ export default function LandingPage({ onGoToLogin }) {
               theme === 'light' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
             )}
           >
-            <span className="relative z-10">Get Started Now</span>
+            <span className="relative z-10">{t('landing.cta_get_started')}</span>
             <ArrowRight className="w-5 h-5 group-hover:translate-x-2 transition-transform duration-300 relative z-10" color={theme === 'light' ? "#ffffff" : "#1C1917"} />
             <div className="absolute inset-x-0 bottom-0 h-1 bg-gold-500 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500 origin-left" />
           </motion.button>
@@ -130,18 +144,18 @@ export default function LandingPage({ onGoToLogin }) {
         <div className="grid md:grid-cols-3 gap-8">
           <FeatureCard 
             icon={Shield}
-            title="Ironclad Security"
-            description="Powered by Supabase RLS. Your credentials are encrypted and visible only to you."
+            title={t('landing.features.secure_vault.title')}
+            description={t('landing.features.secure_vault.desc')}
           />
           <FeatureCard 
             icon={Users}
-            title="Slot Tracking"
-            description="Manage members and track available slots across all families in one centralized dashboard."
+            title={t('landing.features.smart_monitoring.title')}
+            description={t('landing.features.smart_monitoring.desc')}
           />
           <FeatureCard 
             icon={Sparkles}
-            title="Premium UI"
-            description="An editorial-grade design experience that feels more like a luxury magazine than a tool."
+            title={t('landing.features.premium_ui.title')}
+            description={t('landing.features.premium_ui.desc')}
           />
         </div>
       </section>

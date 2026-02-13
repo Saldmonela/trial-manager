@@ -2,10 +2,13 @@ import React, { useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { HardDrive, Check, Loader2, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { cn } from '../utils';
+import { encryptPassword } from '../lib/crypto';
 
 export default function MigrationTool({ onSuccess }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const [status, setStatus] = useState('idle'); // idle, migrating, success, error
   const [log, setLog] = useState('');
 
@@ -30,15 +33,23 @@ export default function MigrationTool({ onSuccess }) {
       const families = JSON.parse(rawData);
       setLog(`Found ${families.length} families. Starting upload...`);
 
+      // Get stable encryption key (user.id)
+      const { data: { user } } = await supabase.auth.getUser();
+      const encryptionKey = user?.id || '';
+
       for (const family of families) {
+        // Encrypt password before storing
+        const encryptedPassword = await encryptPassword(family.ownerPassword, encryptionKey);
+
         // Insert Family
         const { error: familyError } = await supabase
           .from('families')
           .upsert({ // upsert to avoid duplicates if re-run
             id: family.id,
+            user_id: user?.id,
             name: family.name,
             owner_email: family.ownerEmail,
-            owner_password: family.ownerPassword,
+            owner_password: encryptedPassword,
             expiry_date: family.expiryDate,
             storage_used: Number(family.storageUsed) || 0,
             notes: family.notes,
@@ -97,10 +108,10 @@ export default function MigrationTool({ onSuccess }) {
         </div>
         <div>
           <h4 className={cn("font-bold text-sm", theme === 'light' ? "text-amber-900" : "text-amber-500")}>
-            Storage Migration Available
+            {t('common.migration_title')}
           </h4>
           <p className={cn("text-xs opacity-90", theme === 'light' ? "text-amber-800" : "text-amber-200")}>
-            {status === 'idle' && "Move your LocalStorage data to Supabase Cloud for safety."}
+            {status === 'idle' && t('common.migration_desc')}
              {status === 'migrating' && log}
              {status === 'error' && log}
           </p>
@@ -119,7 +130,7 @@ export default function MigrationTool({ onSuccess }) {
         )}
       >
         {status === 'migrating' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-        {status === 'migrating' ? 'Moving...' : 'Migrate Now'}
+        {status === 'migrating' ? t('common.moving_btn') : t('common.migrate_btn')}
       </button>
     </div>
   );

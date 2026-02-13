@@ -1,923 +1,38 @@
-import React, { useState, useEffect } from 'react';
+
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Plus, 
-  Users, 
-  Mail, 
-  Eye, 
-  EyeOff, 
-  Copy, 
-  Trash2, 
-  Check,
-  X,
-  Lock,
-  UserPlus,
-  Crown,
-  Sparkles,
-  Clock,
-  AlertTriangle,
-  Calendar,
-  Pencil,
-  HardDrive,
-  ArrowUpDown,
-  Search,
-  Sun,
-  Moon
+  Plus, Users, Crown, Sparkles, Search, Check,
+  Sun, Moon, AlertTriangle, ArrowUp, ArrowDown, ChevronDown
 } from 'lucide-react';
 import { cn } from '../utils';
 import { 
-  useLocalStorage, 
-  generateId, 
-  MAX_FAMILY_SLOTS, 
-  MAX_STORAGE_GB,
-  getSlotsUsed, 
-  getSlotsAvailable,
-  isFamilyFull,
-  getDaysRemaining,
-  getExpiryStatus
+  isFamilyFull, getSlotsAvailable, getDaysRemaining
 } from '../hooks/useLocalStorage';
 import { useSupabaseData } from '../hooks/useSupabaseData';
+import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
-import MigrationTool from './MigrationTool';
 import { useTheme } from '../context/ThemeContext';
-import TutorialModal from './TutorialModal';
+import { useLanguage } from '../context/LanguageContext';
 
-// Family Card Component
-// Family Card Component
-function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember }) {
-  const { theme } = useTheme();
-  const [showPassword, setShowPassword] = useState(false);
-  const [showEmail, setShowEmail] = useState(false);
-  
-  const maskEmail = (email) => {
-    if (!email) return '';
-    const parts = email.split('@');
-    if (parts.length < 2) return email;
-    
-    const [user, domain] = parts;
-    if (user.length <= 2) return email;
-    
-    return `${user.slice(0, 2)}${'•'.repeat(8)}@${domain}`; 
-  };
-  const [copied, setCopied] = useState(null);
-  const [isExpanded, setIsExpanded] = useState(false);
-  
-  const slotsUsed = getSlotsUsed(family);
-  const slotsAvailable = getSlotsAvailable(family);
-  const isFull = isFamilyFull(family);
-  const daysRemaining = getDaysRemaining(family.expiryDate);
-  const expiryStatus = getExpiryStatus(daysRemaining);
-
-  const expiryColorStyles = {
-    slate: 'bg-slate-500/10 border-slate-500/30 text-slate-400',
-    red: 'bg-red-500/10 border-red-500/30 text-red-400',
-    orange: 'bg-orange-500/10 border-orange-500/30 text-orange-400',
-    yellow: 'bg-yellow-500/10 border-yellow-500/30 text-yellow-400',
-    emerald: 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400',
-  };
-
-  const handleCopy = (text, type) => {
-    navigator.clipboard.writeText(text);
-    setCopied(type);
-    setTimeout(() => setCopied(null), 2000);
-  };
-
-  return (
-    <motion.div
-      layout="position"
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, scale: 0.9 }}
-      className={cn(
-        "group rounded-none border transition-all duration-300",
-        // Editorial Borders
-        theme === 'light' 
-          ? "bg-white border-stone-200 shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)] hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500" 
-          : "bg-stone-900 border-stone-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)] hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
-      )}
-    >
-      {/* Editorial Header Block */}
-      <div className={cn(
-        "p-5 border-b transition-colors",
-        theme === 'light' ? "bg-stone-50 border-stone-200" : "bg-stone-800/50 border-stone-800"
-      )}>
-        <div className="flex items-start justify-between">
-          <div className="flex items-center gap-4">
-            {/* Minimalist Icon or Monogram */}
-            {/* Minimalist Icon or Monogram */}
-            <div className={cn(
-              "w-12 h-12 flex items-center justify-center font-serif text-xl font-bold border rounded-none shrink-0 bg-transparent",
-              theme === 'light' 
-                ? "border-stone-900 text-stone-900" 
-                : "border-stone-50 text-stone-50"
-            )}>
-              {(() => {
-                const name = family.name || 'GM';
-                const parts = name.trim().split(' ');
-                return parts.length > 1 
-                  ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() 
-                  : name.substring(0, 2).toUpperCase();
-              })()}
-            </div>
-            <div>
-              <h3 className={cn(
-                "font-serif text-xl font-bold tracking-tight",
-                theme === 'light' ? "text-stone-900" : "text-stone-50"
-              )}>
-                {family.name || 'Family Plan'}
-              </h3>
-              <div className="flex items-center gap-2 mt-1">
-                <p className={cn("text-xs uppercase tracking-widest font-medium", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-                  {family.notes || 'GOOGLE AI PRO'}
-                </p>
-                {isFull && (
-                  <span className={cn(
-                    "px-2 py-0.5 text-[10px] font-bold tracking-wide uppercase",
-                    theme === 'light' ? "bg-stone-900 text-stone-50" : "bg-stone-50 text-stone-900"
-                  )}>
-                    FULL
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-          
-          {/* Actions - Minimalist */}
-          <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity">
-             <button 
-              onClick={() => onEdit(family)}
-              className={cn("p-2 transition-colors", theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50")}
-            >
-              <Pencil className="w-4 h-4" />
-            </button>
-            <button 
-              onClick={() => onDelete(family.id)}
-              className={cn("p-2 transition-colors", theme === 'light' ? "text-stone-400 hover:text-wine" : "text-stone-500 hover:text-red-400")}
-            >
-              <Trash2 className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Card Body */}
-      <div className="p-5">
-
-        {/* Slot Progress - Thin Lines */}
-        <div className="mb-6">
-          <div className="flex items-end justify-between text-sm mb-2">
-            <span className={cn("font-serif italic", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Capacity</span>
-            <span className={cn(
-              "font-mono text-xs",
-              isFull ? "text-olive" : "text-stone-500"
-            )}>
-              {slotsUsed} / {MAX_FAMILY_SLOTS}
-            </span>
-          </div>
-          
-          <div className="flex gap-1 h-1.5">
-            {[...Array(MAX_FAMILY_SLOTS)].map((_, i) => (
-               <div 
-                key={i}
-                className={cn(
-                  "flex-1 transition-all duration-500",
-                  i < slotsUsed
-                    ? (theme === 'light' ? "bg-stone-900" : "bg-stone-50") // Filled
-                    : (theme === 'light' ? "bg-stone-200" : "bg-stone-800") // Empty
-                )}
-               />
-            ))}
-          </div>
-          
-          {!isFull && (
-            <p className={cn("text-xs mt-2 font-medium uppercase tracking-wider text-right", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
-              {slotsAvailable} Available
-            </p>
-          )}
-        </div>
-
-        {/* Expiry Status - Minimalist Text */}
-        <div className={cn(
-          "flex items-start gap-4 mb-6 pb-6 border-b border-dashed",
-          theme === 'light' ? "border-stone-200" : "border-stone-800"
-        )}>
-          <div className={cn("mt-1", expiryStatus.color === 'red' ? "text-wine" : "text-stone-400")}>
-             {daysRemaining !== null && daysRemaining <= 7 ? <AlertTriangle className="w-4 h-4" /> : <Calendar className="w-4 h-4" />}
-          </div>
-          <div>
-            <p className={cn("text-xs uppercase tracking-widest font-bold mb-1", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
-              Renewal Date
-            </p>
-            <p className={cn("font-serif text-lg", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-              {family.expiryDate ? new Date(family.expiryDate).toLocaleDateString('en-US', { day: 'numeric', month: 'long', year: 'numeric' }) : 'No Date Set'}
-            </p>
-            <p className={cn("text-xs mt-1 italic", expiryStatus.color === 'red' ? "text-wine font-medium" : "text-stone-500")}>
-              {expiryStatus.text}
-            </p>
-          </div>
-        </div>
-
-        {/* Storage Usage - Minimalist Bar */}
-        <div className="mb-6">
-           <div className="flex items-center justify-between text-xs mb-2">
-            <span className={cn("font-medium uppercase tracking-widest", theme === 'light' ? "text-stone-400" : "text-stone-500")}>Storage</span>
-            <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-              {family.storageUsed || 0}GB <span className="text-stone-400">/ 2048GB</span>
-            </span>
-          </div>
-          <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
-            <div 
-              className={cn("absolute top-0 left-0 h-full transition-all duration-500", (family.storageUsed || 0) >= MAX_STORAGE_GB ? "bg-wine" : "bg-stone-900 dark:bg-stone-50")}
-              style={{ width: `${Math.min(((family.storageUsed || 0) / MAX_STORAGE_GB) * 100, 100)}%` }}
-            />
-          </div>
-        </div>
-
-        {/* Owner Credentials - Clean List */}
-        <div className="space-y-3 mb-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-               <Crown className="w-4 h-4 text-gold-500" />
-               <span className={cn("text-sm font-medium", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-                 {showEmail ? family.ownerEmail : maskEmail(family.ownerEmail)}
-               </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setShowEmail(!showEmail)}
-                className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
-              >
-                {showEmail ? "HIDE" : "SHOW"}
-              </button>
-              <button 
-                onClick={() => handleCopy(family.ownerEmail, 'email')}
-                className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-gold-600" : "text-gold-400")}
-              >
-                {copied === 'email' ? "COPIED" : "COPY"}
-              </button>
-            </div>
-          </div>
-           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-               <Lock className={cn("w-4 h-4", theme === 'light' ? "text-stone-400" : "text-stone-600")} />
-               <span className={cn("text-sm font-mono", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-                  {showPassword ? family.ownerPassword : '••••••••••'}
-               </span>
-            </div>
-            <div className="flex items-center gap-3">
-              <button 
-                onClick={() => setShowPassword(!showPassword)}
-                className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
-              >
-                {showPassword ? "HIDE" : "SHOW"}
-              </button>
-              <button 
-                onClick={() => handleCopy(family.ownerPassword, 'password')}
-                className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-gold-600" : "text-gold-400")}
-              >
-                {copied === 'password' ? "COPIED" : "COPY"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Toggle Members */}
-        <button
-          onClick={() => setIsExpanded(!isExpanded)}
-          className={cn(
-            "w-full flex items-center justify-between py-3 border-t transition-colors text-sm group",
-            theme === 'light' 
-              ? "border-stone-200 hover:bg-stone-50" 
-              : "border-stone-800 hover:bg-stone-900"
-          )}
-        >
-          <div className={cn("flex items-center gap-2 font-serif italic", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
-            <Users className="w-4 h-4" />
-            <span>{family.members?.length || 0} Members</span>
-          </div>
-          <span className={cn("transform transition-transform duration-300", isExpanded ? "rotate-180" : "", theme === 'light' ? "text-stone-400" : "text-stone-500")}>▼</span>
-        </button>
-      </div>
-
-      {/* Members List (Expandable) */}
-      <AnimatePresence>
-        {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className={cn(
-              "border-t", 
-              theme === 'light' ? "border-slate-200 bg-stone-50" : "border-slate-800 bg-stone-950"
-            )}
-          >
-            <div className="p-4 space-y-2">
-              {family.members?.length > 0 ? (
-                family.members.map((member, index) => (
-                  <div 
-                    key={member.id} 
-                    className={cn(
-                      "flex items-center justify-between p-3 border-b border-dashed last:border-0",
-                      theme === 'light' ? "border-stone-200" : "border-stone-800"
-                    )}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono border",
-                        theme === 'light' ? "border-stone-300 text-stone-500" : "border-stone-700 text-stone-400"
-                      )}>
-                        {index + 1}
-                      </div>
-                      <span className={cn("text-sm", theme === 'light' ? "text-stone-900" : "text-stone-300")}>{member.name || member.email}</span>
-                    </div>
-                    <button
-                      onClick={() => onRemoveMember(family.id, member.id)}
-                      className="text-stone-400 hover:text-wine transition-colors"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <p className={cn("text-center py-4 text-sm italic font-serif", theme === 'light' ? "text-stone-400" : "text-stone-600")}>No members yet</p>
-              )}
-
-              {/* Add Member Button */}
-              {!isFull && (
-                <button
-                  onClick={() => onAddMember(family.id)}
-                  className={cn(
-                    "w-full flex items-center justify-center gap-2 p-3 mt-2 border border-dashed transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-300 text-stone-500 hover:bg-stone-100 hover:text-stone-900" 
-                      : "border-stone-700 text-stone-400 hover:bg-stone-900 hover:text-cream"
-                  )}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span className="text-sm font-medium uppercase tracking-wider">Add Member</span>
-                </button>
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </motion.div>
-  );
-}
-
-// Add Family Modal
-function AddFamilyModal({ isOpen, onClose, onAdd }) {
-  const { theme } = useTheme();
-  const [formData, setFormData] = useState({
-    name: '',
-    ownerEmail: '',
-    ownerPassword: '',
-    expiryDate: '',
-    storageUsed: '',
-    notes: '',
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.ownerEmail || !formData.ownerPassword) return;
-    
-    onAdd({
-      ...formData,
-      storageUsed: Number(formData.storageUsed) || 0,
-      id: generateId(),
-      members: [],
-      createdAt: new Date().toISOString(),
-    });
-    
-    setFormData({ name: '', ownerEmail: '', ownerPassword: '', expiryDate: '', storageUsed: '', notes: '' });
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full max-w-md border shadow-2xl p-8 rounded-none",
-          theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
-        )}
-      >
-        <div className="flex items-center justify-between mb-8">
-          <h2 className={cn("text-2xl font-serif font-bold", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-            New Family Plan
-          </h2>
-          <button onClick={onClose} className={cn("transition-colors", theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50")}>
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Family Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder="e.g., The Smiths, Premium A"
-                className={cn(
-                  "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                  theme === 'light' 
-                    ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                    : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Owner Email</label>
-                <input
-                  type="email"
-                  value={formData.ownerEmail}
-                  onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                  placeholder="email@example.com"
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                  )}
-                  required
-                />
-              </div>
-              <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Password</label>
-                <input
-                  type="text"
-                  value={formData.ownerPassword}
-                  onChange={(e) => setFormData({ ...formData, ownerPassword: e.target.value })}
-                  placeholder="••••••••"
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                  )}
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-               <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Expiry Date</label>
-                <input
-                  type="date"
-                  value={formData.expiryDate}
-                  onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 focus:border-stone-50"
-                  )}
-                />
-              </div>
-              <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Storage (GB)</label>
-                <input
-                  type="number"
-                  value={formData.storageUsed}
-                  onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
-                  placeholder="0"
-                  max="2048"
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                  )}
-                />
-              </div>
-            </div>
-
-             <div>
-              <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Notes</label>
-              <input
-                type="text"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Additional notes..."
-                className={cn(
-                  "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                  theme === 'light' 
-                    ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                    : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                )}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className={cn(
-              "w-full py-4 text-sm font-bold uppercase tracking-widest transition-all mt-8",
-              theme === 'light'
-                ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
-                : "bg-stone-50 text-stone-900 hover:bg-stone-200"
-            )}
-          >
-            Create Family
-          </button>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// Edit Family Modal
-function EditFamilyModal({ isOpen, onClose, onSave, family }) {
-  const { theme } = useTheme();
-  const [showPassword, setShowPassword] = useState(false);
-  const [formData, setFormData] = useState({
-    name: family?.name || '',
-    ownerEmail: family?.ownerEmail || '',
-    ownerPassword: family?.ownerPassword || '',
-    expiryDate: family?.expiryDate || '',
-    storageUsed: family?.storageUsed,
-    notes: family?.notes || '',
-  });
-
-  const formatDateForInput = (dateString) => {
-    if (!dateString) return '';
-    try {
-      const date = new Date(dateString);
-      return date.toISOString().split('T')[0];
-    } catch (e) {
-      return '';
-    }
-  };
-
-  // Update form when family changes
-  React.useEffect(() => {
-    if (family) {
-      setFormData({
-        name: family.name || '',
-        ownerEmail: family.ownerEmail || '',
-        ownerPassword: family.ownerPassword || '',
-        expiryDate: formatDateForInput(family.expiryDate),
-        storageUsed: family.storageUsed,
-        notes: family.notes || '',
-      });
-    }
-  }, [family]);
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.ownerEmail || !formData.ownerPassword) return;
-    
-    onSave({
-      ...family,
-      ...formData,
-      storageUsed: Number(formData.storageUsed) || 0,
-    });
-    
-    onClose();
-  };
-
-  if (!isOpen || !family) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full max-w-md border shadow-2xl p-8 rounded-none max-h-[90vh] overflow-y-auto",
-          theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
-        )}
-      >
-        <div className="flex items-center justify-between mb-8">
-          <h2 className={cn("text-2xl font-serif font-bold", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-            Edit Family
-          </h2>
-          <button onClick={onClose} className={cn("transition-colors", theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50")}>
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div>
-              <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Family Name</label>
-              <input
-                type="text"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                className={cn(
-                  "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                  theme === 'light' 
-                    ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                    : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                )}
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Owner Email</label>
-                <input
-                  type="email"
-                  value={formData.ownerEmail}
-                  onChange={(e) => setFormData({ ...formData, ownerEmail: e.target.value })}
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                  )}
-                  required
-                />
-              </div>
-              <div className="relative">
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Password</label>
-                <div className="relative">
-                  <input
-                    type={showPassword ? "text" : "password"}
-                    value={formData.ownerPassword}
-                    onChange={(e) => setFormData({ ...formData, ownerPassword: e.target.value })}
-                    className={cn(
-                      "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors pr-10",
-                      theme === 'light' 
-                        ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                        : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                    )}
-                    required
-                  />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className={cn(
-                      "absolute right-2 top-1/2 -translate-y-1/2 transition-colors",
-                      theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50"
-                    )}
-                  >
-                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                  </button>
-                </div>
-              </div>
-            </div>
-
-             <div className="grid grid-cols-2 gap-4">
-               <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Expiry Date</label>
-                <input
-                  type="date"
-                  value={formData.expiryDate}
-                  onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 focus:border-stone-50"
-                  )}
-                />
-              </div>
-              <div>
-                <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Storage (GB)</label>
-                <input
-                  type="number"
-                  value={formData.storageUsed}
-                  onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
-                  placeholder="0"
-                  max="2048"
-                  className={cn(
-                    "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                      : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                  )}
-                />
-              </div>
-            </div>
-
-             <div>
-              <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Notes</label>
-              <input
-                type="text"
-                value={formData.notes}
-                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                className={cn(
-                  "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                  theme === 'light' 
-                    ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                    : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-                )}
-              />
-            </div>
-          </div>
-
-          <button
-            type="submit"
-            className={cn(
-              "w-full py-4 text-sm font-bold uppercase tracking-widest transition-all mt-8",
-              theme === 'light'
-                ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
-                : "bg-stone-50 text-stone-900 hover:bg-stone-200"
-            )}
-          >
-            Update Family
-          </button>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// Add Member Modal
-function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
-  const { theme } = useTheme();
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-  });
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (!formData.name && !formData.email) return;
-    
-    onAdd(familyId, {
-      id: generateId(),
-      name: formData.name,
-      email: formData.email,
-      addedAt: new Date().toISOString(),
-    });
-    
-    setFormData({ name: '', email: '' });
-    onClose();
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full max-w-md border shadow-2xl p-8 rounded-none",
-          theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
-        )}
-      >
-        <div className="flex items-center justify-between mb-8">
-          <h2 className={cn("text-2xl font-serif font-bold", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-            Add Member
-          </h2>
-          <button onClick={onClose} className={cn("transition-colors", theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50")}>
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div>
-            <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Member Name</label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g. John Doe, Kaka..."
-              className={cn(
-                "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                theme === 'light' 
-                  ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                  : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-              )}
-            />
-          </div>
-
-          <div>
-            <label className={cn("block text-xs uppercase tracking-widest font-medium mb-2", theme === 'light' ? "text-stone-500" : "text-stone-400")}>Member Email (Optional)</label>
-            <input
-              type="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              placeholder="member@gmail.com"
-              className={cn(
-                "w-full px-4 py-3 border-b-2 bg-transparent focus:outline-none transition-colors",
-                theme === 'light' 
-                  ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900" 
-                  : "border-stone-700 text-cream placeholder-stone-600 focus:border-cream"
-              )}
-            />
-          </div>
-
-          <button
-            type="submit"
-            className={cn(
-              "w-full py-4 text-sm font-bold uppercase tracking-widest transition-all mt-8",
-              theme === 'light'
-                ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
-                : "bg-stone-50 text-stone-900 hover:bg-stone-200"
-            )}
-          >
-            Add Member
-          </button>
-        </form>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-// Delete Confirmation Modal
-function DeleteConfirmationModal({ isOpen, onClose, onConfirm, familyName }) {
-  const { theme } = useTheme();
-  if (!isOpen) return null;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 z-50 flex items-center justify-center bg-stone-900/80 backdrop-blur-sm p-4"
-      onClick={onClose}
-    >
-      <motion.div
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        onClick={(e) => e.stopPropagation()}
-        className={cn(
-          "w-full max-w-sm border shadow-2xl p-8 rounded-none text-center",
-          theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
-        )}
-      >
-        <div className="flex justify-center mb-6">
-          <div className={cn("p-4 rounded-full", theme === 'light' ? "bg-red-100 text-red-600" : "bg-red-900/20 text-red-500")}>
-            <AlertTriangle className="w-8 h-8" />
-          </div>
-        </div>
-        
-        <h3 className={cn("text-xl font-serif font-bold mb-3", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-          Delete Family Plan?
-        </h3>
-        
-        <p className={cn("text-sm mb-8 leading-relaxed", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-          Are you sure you want to delete <span className="font-bold">"{familyName}"</span>? 
-          This action cannot be undone.
-        </p>
-
-        <div className="flex flex-col gap-3">
-          <button
-            onClick={onConfirm}
-            className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest transition-colors"
-          >
-            Yes, Delete It
-          </button>
-          <button
-            onClick={onClose}
-            className={cn(
-              "w-full py-3 font-bold text-xs uppercase tracking-widest transition-colors",
-              theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-300"
-            )}
-          >
-            Cancel
-          </button>
-        </div>
-      </motion.div>
-    </motion.div>
-  );
-}
-
-
+// Extracted components (Lazy Loaded)
+import FamilyCard from './family/FamilyCard';
+const AddFamilyModal = lazy(() => import('./modals/AddFamilyModal'));
+const EditFamilyModal = lazy(() => import('./modals/EditFamilyModal'));
+const AddMemberModal = lazy(() => import('./modals/AddMemberModal'));
+const DeleteConfirmModal = lazy(() => import('./modals/DeleteConfirmModal'));
+const MigrationTool = lazy(() => import('./MigrationTool'));
+const TutorialModal = lazy(() => import('./TutorialModal'));
+import ToastContainer from './ui/ToastContainer';
+import MigrationBanner from './ui/MigrationBanner';
 
 // Main Dashboard Component
 export default function Dashboard({ onLogout }) {
   const { theme, toggleTheme } = useTheme();
+  const { t, language, toggleLanguage } = useLanguage();
   // Supabase Integration
   const { families, loading, addFamily, updateFamily, deleteFamily, addMember, removeMember } = useSupabaseData();
+  const { toasts, addToast, removeToast } = useToast();
   
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
   const [editFamily, setEditFamily] = useState(null);
@@ -929,13 +44,9 @@ export default function Dashboard({ onLogout }) {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      // Use a combined key of userId so different users on same PC don't conflict
       const tourKey = `fm_tour_seen_${user.id}`;
       const hasSeen = localStorage.getItem(tourKey);
       
-      // Also check if the user is "new" (created within the last 10 minutes)
-      // This ensures existing users don't get bothered by the new tutorial 
-      // even if they haven't seen it yet on this specific browser.
       const createdAt = new Date(user.created_at).getTime();
       const tenMinutes = 10 * 60 * 1000;
       const isNewUser = (Date.now() - createdAt) < tenMinutes;
@@ -959,11 +70,18 @@ export default function Dashboard({ onLogout }) {
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('created'); // 'created', 'expiry', 'storage'
-  const [sortDirection, setSortDirection] = useState('desc'); // 'asc' or 'desc'
+  const [sortBy, setSortBy] = useState('expiry');
+  const [sortDirection, setSortDirection] = useState('asc');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
-  const [showMigration, setShowMigration] = useState(false); // Default false, only show if user wants to import.
+  const [showMigration, setShowMigration] = useState(false);
+  const [mobileSortOpen, setMobileSortOpen] = useState(false);
+
+  const sortOptions = [
+    { key: 'created', label: 'Newest', labelAlt: 'Oldest' },
+    { key: 'expiry', label: 'Expiry: Soonest', labelAlt: 'Expiry: Latest' },
+    { key: 'storage', label: 'Storage: Highest', labelAlt: 'Storage: Lowest' }
+  ];
 
   // Search for email in families
   const handleSearch = () => {
@@ -976,7 +94,6 @@ export default function Dashboard({ onLogout }) {
     const results = [];
     
     families.forEach((family) => {
-      // Check owner email
       if (family.ownerEmail?.toLowerCase().includes(query)) {
         results.push({
           familyName: family.name || 'Family Plan',
@@ -985,7 +102,6 @@ export default function Dashboard({ onLogout }) {
         });
       }
       
-      // Check members
       family.members?.forEach((member) => {
         if (member.email?.toLowerCase().includes(query) || member.name?.toLowerCase().includes(query)) {
           results.push({
@@ -1000,35 +116,67 @@ export default function Dashboard({ onLogout }) {
     setSearchResult(results.length > 0 ? results : 'not_found');
   };
 
-  const handleAddFamily = (family) => {
-    addFamily(family);
-  };
-
-  const handleEditFamily = (updatedFamily) => {
-    updateFamily(updatedFamily);
-  };
-
-  const handleDeleteFamily = (id) => {
-    setDeleteFamilyId(id);
-  };
-
-  const confirmDeleteFamily = () => {
-    if (deleteFamilyId) {
-      deleteFamily(deleteFamilyId);
-      setDeleteFamilyId(null);
+  const handleSortClick = (key) => {
+    if (sortBy === key) {
+      setSortDirection(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortDirection('asc');
     }
   };
 
-  const handleAddMember = (familyId, member) => {
-    addMember(familyId, member);
-  };
+  const handleAddFamily = useCallback(async (family) => {
+    const result = await addFamily(family);
+    if (result?.success) {
+      addToast('Family added!', 'success');
+    } else {
+      addToast(result?.error || 'Failed to add family', 'error');
+    }
+  }, [addFamily, addToast]);
 
-  const handleRemoveMember = (familyId, memberId) => {
-     removeMember(familyId, memberId);
-  };
+  const handleEditFamily = useCallback(async (updatedFamily) => {
+    const result = await updateFamily(updatedFamily);
+    if (result?.success) {
+      addToast('Family updated!', 'success');
+    } else {
+      addToast(result?.error || 'Failed to update family', 'error');
+    }
+  }, [updateFamily, addToast]);
 
-  // Filter and Sort families
-  const getSortedFamilies = () => {
+  const handleDeleteFamily = useCallback((id) => { setDeleteFamilyId(id); }, []);
+
+  const confirmDeleteFamily = useCallback(async () => {
+    if (deleteFamilyId) {
+      const familyName = families.find(f => f.id === deleteFamilyId)?.name || 'Family';
+      const result = await deleteFamily(deleteFamilyId);
+      setDeleteFamilyId(null);
+      if (result?.success) {
+        addToast(`"${familyName}" deleted!`, 'success');
+      } else {
+        addToast(result?.error || 'Failed to delete family', 'error');
+      }
+    }
+  }, [deleteFamilyId, families, deleteFamily, addToast]);
+
+  const handleAddMember = useCallback(async (familyId, member) => {
+    const result = await addMember(familyId, member);
+    if (result?.success) {
+      addToast('Member added!', 'success');
+    } else {
+      addToast(result?.error || 'Failed to add member', 'error');
+    }
+  }, [addMember, addToast]);
+
+  const handleRemoveMember = useCallback(async (familyId, memberId) => {
+    const result = await removeMember(familyId, memberId);
+    if (result?.success) {
+      addToast('Member removed!', 'success');
+    } else {
+      addToast(result?.error || 'Failed to remove member', 'error');
+    }
+  }, [removeMember, addToast]);
+
+  const sortedFamilies = useMemo(() => {
     let filtered = families.filter((f) => {
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
@@ -1042,56 +190,43 @@ export default function Dashboard({ onLogout }) {
       if (sortBy === 'expiry') {
         const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0;
         const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
-        comparison = dateB - dateA; // Default Desc (farthest first)
+        comparison = dateB - dateA;
       } else if (sortBy === 'storage') {
         const storageA = a.storageUsed || 0;
         const storageB = b.storageUsed || 0;
-        comparison = storageB - storageA; // Default Desc (largest used first) wait default was storageA - storageB??
-        // Let's stick to consistent default: Descending means "High to Low".
-        // For storage: High Used -> Low Used (desc). Low Used -> High Used (asc).
+        comparison = storageB - storageA;
       } else {
-        // Default: created
         const dateA = new Date(a.createdAt).getTime();
         const dateB = new Date(b.createdAt).getTime();
-        comparison = dateB - dateA; // Default Desc (Newest first)
+        comparison = dateB - dateA;
       }
 
       return sortDirection === 'asc' ? -comparison : comparison;
     });
-  };
-
-  const handleSortClick = (key) => {
-    if (sortBy === key) {
-      setSortDirection(prev => prev === 'desc' ? 'asc' : 'desc');
-    } else {
-      setSortBy(key);
-      setSortDirection('desc'); // Reset to desc default for new key
-    }
-  };
-
-  const sortedFamilies = getSortedFamilies();
+  }, [families, filter, sortBy, sortDirection]);
 
   // Stats
-  const stats = {
+  const stats = useMemo(() => ({
     total: families.length,
     full: families.filter((f) => isFamilyFull(f)).length,
-    availableSlots: families.reduce((acc, f) => acc + getSlotsAvailable(f), 0), // Sum of all available slots
+    availableSlots: families.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
     totalMembers: families.reduce((acc, f) => acc + (f.members?.length || 0), 0),
-  };
+  }), [families]);
+
+  const expiringSoonCount = useMemo(() => {
+    return families.filter(f => {
+      const days = getDaysRemaining(f.expiryDate);
+      return days !== null && days <= 7 && days >= 0;
+    }).length;
+  }, [families]);
 
   if (loading) {
-    // Failsafe: if loading takes too long, show error hints
-    setTimeout(() => {
-      const el = document.getElementById('loading-text');
-      if (el) el.innerHTML = "Still loading...<br/><span class='text-xs opacity-70'>Check your internet or Supabase connection.</span>";
-    }, 5000);
-
     return (
       <div className={cn(
         "min-h-screen flex items-center justify-center font-serif italic text-center",
         theme === 'light' ? "bg-stone-50 text-stone-400" : "bg-stone-950 text-stone-600"
       )}>
-        <p id="loading-text">Loading dashboard...</p>
+        <p>{t('common.loading')}</p>
       </div>
     );
   }
@@ -1102,7 +237,7 @@ export default function Dashboard({ onLogout }) {
       "min-h-screen transition-colors duration-500 font-sans",
       theme === 'light' ? "bg-stone-50 text-stone-900" : "bg-stone-950 text-stone-50"
     )}>
-      {/* Header - Editorial Style */}
+      {/* Header */}
       <header className={cn(
         "sticky top-0 z-40 backdrop-blur-md border-b transition-colors duration-300",
         theme === 'light' 
@@ -1110,43 +245,54 @@ export default function Dashboard({ onLogout }) {
           : "bg-stone-950/90 border-stone-800"
       )}>
         <div className="container mx-auto px-4 py-4 md:px-6 md:py-6 flex flex-col md:flex-row gap-4 items-center justify-between">
-          <div className="text-center md:text-left">
+          <div className="text-center md:text-left w-full md:w-auto">
             <h1 className={cn(
-               "font-serif text-xl md:text-2xl font-bold tracking-tight",
+               "font-serif text-2xl md:text-2xl font-bold tracking-tight",
                theme === 'light' ? "text-stone-900" : "text-white"
             )}>
-              Google AI <span className="text-gold-500 italic">Family</span> Manager
+              {t('dashboard.title')} <span className="text-gold-500 italic">{t('dashboard.subtitle')}</span>
             </h1>
             <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
-               <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-60">Premium Dashboard</p>
+               <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-60">{t('auth.premium_dashboard')}</p>
                <span className="text-stone-300 dark:text-stone-700">|</span>
                 <button 
                   onClick={onLogout}
-                  className="text-[10px] md:text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors"
+                  className="text-[10px] md:text-xs uppercase tracking-widest text-red-400 hover:text-red-500 transition-colors py-2 md:py-0"
                 >
-                  Log Out
+                  {t('auth.logout')}
                 </button>
             </div>
           </div>
           
           <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-center md:justify-end">
-            {/* Theme Toggle */}
             <button
                onClick={() => setShowTutorial(true)}
                className={cn(
-                 "p-2 rounded-full transition-colors flex items-center gap-2 px-3",
+                 "p-3 md:p-2 rounded-full transition-colors flex items-center gap-2 px-3",
                  theme === 'light' ? "hover:bg-stone-200 text-stone-600" : "hover:bg-stone-800 text-stone-400"
                )}
                title="Restart Tour"
             >
-              <Sparkles className="w-4 h-4 text-gold-500" />
-              <span className="text-[10px] uppercase tracking-widest font-bold hidden md:inline">Help</span>
+              <Sparkles className="w-5 h-5 md:w-4 md:h-4 text-gold-500" />
+              <span className="text-[10px] uppercase tracking-widest font-bold hidden md:inline">{t('dashboard.help')}</span>
+            </button>
+
+            <button
+               onClick={toggleLanguage}
+               className={cn(
+                 "p-0 w-10 h-10 md:w-8 md:h-8 flex items-center justify-center rounded-full transition-colors border text-[10px] font-bold",
+                 theme === 'light' 
+                   ? "border-stone-200 hover:bg-stone-200 text-stone-600" 
+                   : "border-stone-800 hover:bg-stone-800 text-stone-400"
+               )}
+            >
+              {language === 'en' ? 'ID' : 'EN'}
             </button>
 
             <button
               onClick={toggleTheme}
               className={cn(
-                "p-2 rounded-full transition-colors",
+                "p-3 md:p-2 rounded-full transition-colors",
                 theme === 'light' 
                   ? "hover:bg-stone-200 text-stone-600" 
                   : "hover:bg-stone-800 text-stone-400"
@@ -1158,14 +304,14 @@ export default function Dashboard({ onLogout }) {
               id="tour-new-family"
               onClick={() => setIsAddFamilyOpen(true)}
               className={cn(
-                 "flex items-center gap-2 px-4 py-2 md:px-6 md:py-2.5 font-medium rounded-none transition-all shadow-sm text-xs md:text-base whitespace-nowrap",
+                 "flex items-center gap-2 px-4 py-3 md:px-6 md:py-2.5 font-medium rounded-none transition-all shadow-sm text-sm md:text-base whitespace-nowrap min-h-[44px]",
                  theme === 'light'
                   ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
                   : "bg-stone-50 text-stone-900 hover:bg-stone-200"
               )}
             >
-              <Plus className="w-4 h-4" />
-              New Family
+              <Plus className="w-5 h-5 md:w-4 md:h-4" />
+              {t('dashboard.new_family')}
             </button>
           </div>
         </div>
@@ -1173,6 +319,9 @@ export default function Dashboard({ onLogout }) {
 
       <main className="container mx-auto px-6 py-8">
         
+        {/* Password Encryption Migration Banner */}
+        <MigrationBanner families={families} />
+
         {/* Migration Tool */}
         {showMigration && (
            <div className="mb-8">
@@ -1185,15 +334,15 @@ export default function Dashboard({ onLogout }) {
                 onClick={() => setShowMigration(true)}
                 className="text-[10px] uppercase tracking-widest text-stone-500 hover:text-gold-500 transition-colors"
               >
-                Show Import Tool
+                {t('dashboard.show_import')}
               </button>
            </div>
         )}
 
 
-        {/* Search Bar - Minimalist */}
+        {/* Search Bar */}
         <div className="mb-10">
-          <div className="flex gap-4">
+          <div className="flex flex-col md:flex-row gap-4">
             <div id="tour-search" className="relative flex-1 group">
               <Search className={cn(
                 "absolute left-0 top-1/2 -translate-y-1/2 w-5 h-5 transition-colors duration-300",
@@ -1204,7 +353,7 @@ export default function Dashboard({ onLogout }) {
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                placeholder="Search families, emails, or members"
+                placeholder={t('dashboard.search_placeholder')}
                 className={cn(
                   "w-full pl-8 pr-4 py-3 bg-transparent border-b-2 font-serif text-lg focus:outline-none transition-all duration-300",
                   theme === 'light' 
@@ -1216,25 +365,25 @@ export default function Dashboard({ onLogout }) {
             <button
               onClick={handleSearch}
               className={cn(
-                "px-8 py-3 font-medium uppercase tracking-widest text-sm transition-all duration-300",
+                "w-full md:w-auto px-8 py-3 font-medium uppercase tracking-widest text-sm transition-all duration-300 min-h-[44px]",
                 theme === 'light'
                   ? "bg-stone-900 text-stone-50 hover:bg-stone-800"
                   : "bg-stone-50 text-stone-900 hover:bg-stone-200"
               )}
             >
-              Search
+              {t('common.search')}
             </button>
             {searchResult && (
               <button
                 onClick={() => { setSearchQuery(''); setSearchResult(null); }}
                 className={cn(
-                  "px-4 py-3 transition-colors",
+                  "w-full md:w-auto px-4 py-3 transition-colors min-h-[44px]",
                   theme === 'light' 
                     ? "text-stone-400 hover:text-stone-900" 
                     : "text-stone-500 hover:text-cream"
                 )}
               >
-                Clear
+                {t('common.clear')}
               </button>
             )}
           </div>
@@ -1300,44 +449,131 @@ export default function Dashboard({ onLogout }) {
           </AnimatePresence>
         </div>
 
-        {/* Stats */}
-        {/* Stats - Editorial Grid */}
+        {/* Stats Grid */}
         <div id="tour-stats" className="grid grid-cols-2 md:grid-cols-4 gap-0 border-t border-l mb-12 select-none" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
           {[
-            { label: 'Total Families', value: stats.total, color: theme === 'light' ? 'text-stone-900' : 'text-stone-50' },
-            { label: 'Full Capacity', value: `${stats.full}/${families.length}`, color: theme === 'light' ? 'text-stone-500' : 'text-stone-400' },
-            { label: 'Available Slots', value: `${stats.availableSlots}/${families.length * 5}`, color: 'text-emerald-600' },
-            { label: 'Total Members', value: stats.totalMembers, color: 'text-amber-600' }
-          ].map((stat, idx) => (
-            <div key={idx} className={cn(
-              "p-6 border-b border-r flex flex-col justify-between aspect-[4/3] group hover:bg-opacity-50 transition-colors",
-              theme === 'light' ? "border-stone-200 hover:bg-stone-200" : "border-stone-800 hover:bg-stone-800"
-            )}>
-              <span className={cn("text-xs uppercase tracking-[0.2em] font-medium", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
-                {stat.label}
-              </span>
-              <span className={cn("font-serif text-3xl lg:text-5xl font-bold tracking-tighter mt-2 break-all", stat.color)}>
-                {stat.value}
-              </span>
-            </div>
-          ))}
+            { label: t('dashboard.stats.total_families'), value: stats.total, color: theme === 'light' ? 'text-stone-900' : 'text-stone-50' },
+            { 
+              label: t('dashboard.stats.full_capacity'), 
+              value: `${stats.full}/${families.length}`, 
+              percentage: families.length > 0 ? (stats.full / families.length) * 100 : 0,
+              type: 'capacity'
+            },
+            { 
+              label: t('dashboard.stats.available_slots'), 
+              value: `${stats.availableSlots}/${families.length * 5}`, 
+              percentage: (families.length * 5) > 0 ? (stats.availableSlots / (families.length * 5)) * 100 : 0,
+              type: 'slots'
+            },
+            { label: t('dashboard.stats.total_members'), value: stats.totalMembers, color: 'text-amber-600' }
+          ].map((stat, idx) => {
+            let statusTheme = { bg: '', text: stat.color || '', accent: '', label: '' };
+            
+            if (stat.percentage !== undefined) {
+              if (stat.type === 'capacity') {
+                if (stat.percentage > 80) {
+                  statusTheme = { bg: theme === 'light' ? 'bg-red-50' : 'bg-red-950/40', text: 'text-red-600', accent: 'bg-red-600', label: t('dashboard.stats.status.critical_full') };
+                } else if (stat.percentage > 50) {
+                  statusTheme = { bg: theme === 'light' ? 'bg-amber-50' : 'bg-amber-950/40', text: 'text-amber-600', accent: 'bg-amber-600', label: t('dashboard.stats.status.high_usage') };
+                } else {
+                  statusTheme = { bg: '', text: theme === 'light' ? 'text-stone-900' : 'text-stone-50', accent: 'bg-stone-500', label: t('dashboard.stats.status.stable') };
+                }
+              } else {
+                if (stat.percentage < 20) {
+                  statusTheme = { bg: theme === 'light' ? 'bg-red-50' : 'bg-red-950/40', text: 'text-red-600', accent: 'bg-red-600', label: t('dashboard.stats.status.critical_low') };
+                } else if (stat.percentage < 50) {
+                  statusTheme = { bg: theme === 'light' ? 'bg-amber-50' : 'bg-amber-950/40', text: 'text-amber-600', accent: 'bg-amber-600', label: t('dashboard.stats.status.moderate') };
+                } else {
+                  statusTheme = { bg: theme === 'light' ? 'bg-emerald-50' : 'bg-emerald-950/20', text: 'text-emerald-600', accent: 'bg-emerald-600', label: t('dashboard.stats.status.spacious') };
+                }
+              }
+            }
+
+            return (
+              <div key={idx} className={cn(
+                "p-6 border-b border-r flex flex-col justify-between aspect-[4/3] group transition-all duration-500 relative overflow-hidden",
+                theme === 'light' ? "border-stone-200" : "border-stone-800",
+                statusTheme.bg || (theme === 'light' ? "hover:bg-stone-50" : "hover:bg-stone-900/50")
+              )}>
+                {stat.percentage !== undefined && (
+                   <motion.div 
+                     initial={{ height: 0 }}
+                     animate={{ height: `${stat.percentage}%` }}
+                     className={cn("absolute bottom-0 left-0 w-1 opacity-20", statusTheme.accent)}
+                   />
+                )}
+
+                <div className="relative z-10 flex flex-col justify-between h-full">
+                  <span className={cn(
+                    "text-[10px] uppercase tracking-[0.2em] font-bold transition-colors", 
+                    statusTheme.bg ? statusTheme.text : (theme === 'light' ? "text-stone-400" : "text-stone-500")
+                  )}>
+                    {stat.label}
+                  </span>
+                  
+                  <div className="flex flex-col gap-1">
+                    <span className={cn(
+                      "font-serif text-3xl lg:text-5xl font-bold tracking-tighter break-all transition-colors", 
+                      statusTheme.text
+                    )}>
+                      {stat.value}
+                    </span>
+                    
+                    {stat.percentage !== undefined && (
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className={cn("text-[9px] font-bold tracking-widest", statusTheme.text)}>
+                          {statusTheme.label}
+                        </span>
+                        <span className={cn("text-[10px] font-mono opacity-40", statusTheme.text)}>
+                          {Math.round(stat.percentage)}%
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
 
+        {/* Summary Widget */}
+        {expiringSoonCount > 0 && (
+          <motion.div 
+            initial={{ opacity: 0, y: -10 }}
+            animate={{ opacity: 1, y: 0 }}
+            onClick={() => { setFilter('all'); setSortBy('expiry'); setSortDirection('asc'); }}
+            className={cn(
+              "mb-8 p-4 border flex items-center justify-between cursor-pointer transition-colors group",
+              theme === 'light' ? "bg-amber-50 border-amber-200 hover:bg-amber-100" : "bg-amber-950/20 border-amber-900/50 hover:bg-amber-950/40"
+            )}
+          >
+            <div className="flex items-center gap-3">
+              <div className={cn("p-2 rounded-full", theme === 'light' ? "bg-amber-100 text-amber-600" : "bg-amber-900/50 text-amber-500")}>
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <span className={cn("font-bold uppercase tracking-widest text-xs", theme === 'light' ? "text-amber-900" : "text-amber-500")}>
+                Attention Needed: {expiringSoonCount} expiring this week
+              </span>
+            </div>
+            <span className={cn("text-xs underline decoration-dotted underline-offset-4 group-hover:text-amber-600", theme === 'light' ? "text-amber-800" : "text-amber-500")}>
+              View All
+            </span>
+          </motion.div>
+        )}
+
         {/* Filters and Sorting */}
-        {/* Filters and Sorting - Clean Text Toggles */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-4 border-b border-dashed" style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}>
-          {/* Filter Tabs */}
           <div className="flex gap-6">
             {[
-              { key: 'all', label: 'All Families' },
-              { key: 'available', label: 'Space Available' },
-              { key: 'full', label: 'Fully Booked' },
+              { key: 'all', label: t('dashboard.filters.all') },
+              { key: 'available', label: t('dashboard.filters.available') },
+              { key: 'full', label: t('dashboard.filters.full') },
             ].map((f) => (
               <button
                 key={f.key}
                 onClick={() => setFilter(f.key)}
                 className={cn(
-                  "text-sm font-medium transition-all duration-300 relative",
+                  "text-sm font-medium transition-all duration-300 relative py-2",
                   filter === f.key 
                     ? (theme === 'light' ? "text-stone-900" : "text-stone-50") 
                     : (theme === 'light' ? "text-stone-400 hover:text-stone-600" : "text-stone-600 hover:text-stone-400")
@@ -1347,35 +583,94 @@ export default function Dashboard({ onLogout }) {
                 {filter === f.key && (
                   <motion.div 
                     layoutId="activeFilter"
-                    className={cn("absolute -bottom-5 left-0 right-0 h-0.5", theme === 'light' ? "bg-stone-900" : "bg-gold-500")}
+                    className={cn("absolute bottom-0 left-0 right-0 h-0.5", theme === 'light' ? "bg-stone-900" : "bg-gold-500")}
                   />
                 )}
               </button>
             ))}
           </div>
 
-          {/* Sort Options */}
           <div className="flex flex-wrap items-center gap-2 md:gap-4">
-            <span className={cn("text-xs uppercase tracking-widest mr-2", theme === 'light' ? "text-stone-400" : "text-stone-600")}>Sort By:</span>
-            <div className="flex flex-wrap gap-2">
-              {[
-                { key: 'created', label: sortDirection === 'desc' ? 'Newest' : 'Oldest' },
-                { key: 'expiry', label: sortDirection === 'desc' ? 'Farthest' : 'Closest' },
-                { key: 'storage', label: sortDirection === 'desc' ? 'Most Used' : 'Least Used' }
-              ].map((s) => (
-                <button
-                  key={s.key}
-                  onClick={() => handleSortClick(s.key)}
+            <span className={cn("text-xs uppercase tracking-widest mr-2", theme === 'light' ? "text-stone-400" : "text-stone-600")}>{t('dashboard.sort.label')}</span>
+            <div className="flex flex-col relative">
+               {/* Mobile Dropdown Trigger */}
+               <button
+                  onClick={() => setMobileSortOpen(!mobileSortOpen)}
                   className={cn(
-                    "px-2 py-1 text-[10px] md:text-xs md:px-3 uppercase tracking-wider font-medium border transition-all whitespace-nowrap",
-                    sortBy === s.key 
-                      ? (theme === 'light' ? "bg-stone-900 text-stone-50 border-stone-900" : "bg-stone-50 text-stone-900 border-stone-50")
-                      : (theme === 'light' ? "text-stone-400 border-transparent hover:border-stone-200" : "text-stone-500 border-transparent hover:border-stone-800")
+                    "md:hidden flex items-center justify-between gap-2 px-4 py-2 text-xs uppercase tracking-wider font-medium border transition-colors min-w-[180px]",
+                    theme === 'light' 
+                      ? "bg-stone-900 text-stone-50 border-stone-900" 
+                      : "bg-stone-50 text-stone-900 border-stone-50"
                   )}
-                >
-                  {s.label}
-                </button>
-              ))}
+               >
+                 <span className="flex items-center gap-2">
+                   {(() => {
+                     const activeOption = sortOptions.find(s => s.key === sortBy);
+                     return activeOption ? (
+                       <>
+                         {sortDirection === 'desc' ? activeOption.labelAlt : activeOption.label}
+                         {sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
+                       </>
+                     ) : 'Sort By';
+                   })()}
+                 </span>
+                 <ChevronDown className={cn("w-3 h-3 transition-transform", mobileSortOpen ? "rotate-180" : "")} />
+               </button>
+
+               {/* Mobile Dropdown Menu */}
+               <AnimatePresence>
+                 {mobileSortOpen && (
+                   <motion.div
+                     initial={{ opacity: 0, y: 10 }}
+                     animate={{ opacity: 1, y: 0 }}
+                     exit={{ opacity: 0, y: 10 }}
+                     className={cn(
+                       "absolute top-full right-0 mt-2 w-full md:w-auto min-w-[180px] z-50 border shadow-xl md:hidden",
+                       theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
+                     )}
+                   >
+                     {sortOptions.map((s) => (
+                       <button
+                         key={s.key}
+                         onClick={() => {
+                           handleSortClick(s.key);
+                           setMobileSortOpen(false);
+                         }}
+                         className={cn(
+                           "w-full text-left px-4 py-3 text-xs uppercase tracking-wider font-medium border-b last:border-0 hover:bg-black/5 dark:hover:bg-white/5 flex items-center justify-between transition-colors",
+                           theme === 'light' ? "border-stone-100 text-stone-900" : "border-stone-800 text-stone-200"
+                         )}
+                       >
+                         <span>{sortDirection === 'desc' && sortBy === s.key ? s.labelAlt : s.label}</span>
+                         {sortBy === s.key && (
+                           sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                         )}
+                       </button>
+                     ))}
+                   </motion.div>
+                 )}
+               </AnimatePresence>
+
+               {/* Desktop Buttons */}
+               <div className="hidden md:flex flex-wrap gap-2">
+                {sortOptions.map((s) => (
+                  <button
+                    key={s.key}
+                    onClick={() => handleSortClick(s.key)}
+                    className={cn(
+                      "pl-3 pr-2 py-2 text-[10px] md:text-xs uppercase tracking-wider font-medium border transition-all whitespace-nowrap flex items-center gap-2",
+                      sortBy === s.key 
+                        ? (theme === 'light' ? "bg-stone-900 text-stone-50 border-stone-900" : "bg-stone-50 text-stone-900 border-stone-50")
+                        : (theme === 'light' ? "text-stone-400 border-transparent hover:border-stone-200" : "text-stone-500 border-transparent hover:border-stone-800")
+                    )}
+                  >
+                    {sortBy === s.key && sortDirection === 'desc' ? s.labelAlt : s.label}
+                    {sortBy === s.key && (
+                      sortDirection === 'asc' ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+                    )}
+                  </button>
+                ))}
+               </div>
             </div>
           </div>
         </div>
@@ -1392,7 +687,6 @@ export default function Dashboard({ onLogout }) {
                 : "bg-stone-900 border-stone-800 shadow-2xl"
             )}
           >
-            {/* Artistic Background Element */}
             <div className="absolute top-0 left-1/2 -translate-x-1/2 w-96 h-96 bg-gold-500/5 rounded-full blur-[100px] pointer-events-none" />
             
             <div className="relative z-10 flex flex-col items-center">
@@ -1442,7 +736,7 @@ export default function Dashboard({ onLogout }) {
             </div>
           </motion.div>
         ) : (
-          <motion.div layout className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <motion.div layout className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-4">
             <AnimatePresence>
               {sortedFamilies.map((family) => (
                 <FamilyCard 
@@ -1460,52 +754,41 @@ export default function Dashboard({ onLogout }) {
       </main>
 
       {/* Modals */}
-      <AnimatePresence>
-        {isAddFamilyOpen && (
-          <AddFamilyModal
-            isOpen={isAddFamilyOpen}
-            onClose={() => setIsAddFamilyOpen(false)}
-            onAdd={handleAddFamily}
-          />
-        )}
-      </AnimatePresence>
+      <Suspense fallback={null}>
+        <AddFamilyModal
+          isOpen={isAddFamilyOpen}
+          onClose={() => setIsAddFamilyOpen(false)}
+          onAdd={handleAddFamily}
+        />
 
-      <AnimatePresence>
-        {editFamily && (
-          <EditFamilyModal
-            isOpen={!!editFamily}
-            onClose={() => setEditFamily(null)}
-            onSave={handleEditFamily}
-            family={editFamily}
-          />
-        )}
-      </AnimatePresence>
+        <EditFamilyModal
+          isOpen={!!editFamily}
+          onClose={() => setEditFamily(null)}
+          onSave={handleEditFamily}
+          family={editFamily}
+        />
 
-      <AnimatePresence>
-        {addMemberFamilyId && (
-          <AddMemberModal
-            isOpen={!!addMemberFamilyId}
-            onClose={() => setAddMemberFamilyId(null)}
-            onAdd={handleAddMember}
-            familyId={addMemberFamilyId}
-          />
-        )}
+        <AddMemberModal
+          isOpen={!!addMemberFamilyId}
+          onClose={() => setAddMemberFamilyId(null)}
+          onAdd={handleAddMember}
+          familyId={addMemberFamilyId}
+        />
+
+        <DeleteConfirmModal
+          isOpen={!!deleteFamilyId}
+          onClose={() => setDeleteFamilyId(null)}
+          onConfirm={confirmDeleteFamily}
+          familyName={families.find(f => f.id === deleteFamilyId)?.name || 'Family'}
+        />
+
         {showTutorial && (
-           <TutorialModal onClose={handleTutorialClose} />
+          <TutorialModal onClose={handleTutorialClose} />
         )}
-      </AnimatePresence>
+      </Suspense>
 
-      <AnimatePresence>
-        {deleteFamilyId && (
-          <DeleteConfirmationModal
-            isOpen={!!deleteFamilyId}
-            onClose={() => setDeleteFamilyId(null)}
-            onConfirm={confirmDeleteFamily}
-            familyName={families.find(f => f.id === deleteFamilyId)?.name || 'Family'}
-          />
-        )}
-      </AnimatePresence>
-
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} removeToast={removeToast} />
     </div>
   );
 }

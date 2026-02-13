@@ -1,16 +1,48 @@
-# React + Vite
+# Trial Manager
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A modern, family-focused trial account management application built with **React 19**, **Vite**, **Supabase**, and **Tailwind CSS 4**.
 
-Currently, two official plugins are available:
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![React](https://img.shields.io/badge/React-19-blue)
+![Vite](https://img.shields.io/badge/Vite-7-646CFF)
+![Supabase](https://img.shields.io/badge/Supabase-Auth%20%7C%20DB-3ECF8E)
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+## Overview
 
-## React Compiler
+Trial Manager helps families track shared subscription accounts. It offers a secure, real-time dashboard to manage login credentials, expiry dates, and member access.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Key Features
 
-## Expanding the ESLint configuration
+- **Dashboard**: Visual overview of all family subscriptions.
+- **Real-time Updates**: Live synchronization of data across devices.
+- **Security**: Client-side encryption for sensitive password storage.
+- **Member Management**: Track who has access to which account.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+## Documentation
+
+- **[Architecture](./docs/architecture.md)**: High-level overview, tech stack, and database design.
+- **[Component Library](./docs/components.md)**: Details on UI/Feature components and hooks.
+- **[Development Guide](./docs/development.md)**: Setup instructions to run the project locally.
+- **[Testing Strategy](./docs/testing.md)**: How to run and write tests.
+- **[Deployment](./docs/deployment.md)**: Building and deploying to production.
+
+## Quick Start
+
+1.  **Clone & Install**:
+
+    ```bash
+    git clone <repo-url>
+    npm install
+    ```
+
+2.  **Setup Environment**:
+    Create `.env` with your Supabase keys (see [Development Guide](./docs/development.md)).
+
+3.  **Run Dev Server**:
+    ```bash
+    npm run dev
+    ```
+
+## License
+
+This project is licensed under the MIT License.

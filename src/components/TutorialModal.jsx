@@ -1,28 +1,29 @@
 import React, { useState, useEffect, useLayoutEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
+import { useLanguage } from '../context/LanguageContext';
 import { cn } from '../utils';
 import { ChevronRight, X, Sparkles, Plus, Search, BarChart3 } from 'lucide-react';
 
 const TOUR_STEPS = [
   {
     targetId: 'tour-stats',
-    title: "Quick Statistics",
-    description: "Monitor your entire collection at a glance. See total families, available slots, and member counts.",
+    titleKey: "tutorial.steps.stats.title",
+    descKey: "tutorial.steps.stats.description",
     icon: BarChart3,
     position: 'bottom'
   },
   {
     targetId: 'tour-new-family',
-    title: "Create Your First Plan",
-    description: "Click here to add a new Google AI Family. You can input the owner's email, password, and set renewal alerts.",
+    titleKey: "tutorial.steps.new_family.title",
+    descKey: "tutorial.steps.new_family.description",
     icon: Plus,
     position: 'bottom-left'
   },
   {
     targetId: 'tour-search',
-    title: "Powerful Search",
-    description: "Looking for a specific member or email? Find which family they belong to instantly across all your accounts.",
+    titleKey: "tutorial.steps.search.title",
+    descKey: "tutorial.steps.search.description",
     icon: Search,
     position: 'bottom'
   }
@@ -30,6 +31,7 @@ const TOUR_STEPS = [
 
 export default function TutorialModal({ onClose }) {
   const { theme } = useTheme();
+  const { t } = useLanguage();
   const [currentStep, setCurrentStep] = useState(-1); // -1 is Welcome
   const [coords, setCoords] = useState(null);
 
@@ -122,10 +124,9 @@ export default function TutorialModal({ onClose }) {
              >
                 <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
                 <Sparkles className="w-16 h-16 mx-auto mb-6 text-gold-500" />
-                <h2 className="text-4xl font-serif font-bold mb-4">Welcome Home</h2>
+                <h2 className="text-4xl font-serif font-bold mb-4">{t('tutorial.welcome.title')}</h2>
                 <p className={cn("text-lg mb-8 leading-relaxed", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
-                  Ready to manage your premium Google AI plans with pure elegance? 
-                  Let's show you how it works in 3 seconds.
+                  {t('tutorial.welcome.text')}
                 </p>
                 <button
                   onClick={() => setCurrentStep(0)}
@@ -134,9 +135,9 @@ export default function TutorialModal({ onClose }) {
                     theme === 'light' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
                   )}
                 >
-                  Start Guided Tour
+                  {t('tutorial.welcome.cta')}
                 </button>
-                <button onClick={onClose} className="mt-4 text-xs uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity">Skip Intro</button>
+                <button onClick={onClose} className="mt-4 text-xs uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity">{t('common.skip')}</button>
              </motion.div>
           ) : (
             /* Tooltip Overlay */
@@ -171,14 +172,14 @@ export default function TutorialModal({ onClose }) {
                    <div className="p-2 bg-gold-500/10 rounded-lg">
                       {React.createElement(TOUR_STEPS[currentStep].icon, { className: "w-5 h-5 text-gold-500" })}
                    </div>
-                   <h3 className="font-serif font-bold text-lg">{TOUR_STEPS[currentStep].title}</h3>
+                   <h3 className="font-serif font-bold text-lg">{t(TOUR_STEPS[currentStep].titleKey)}</h3>
                 </div>
                 <p className={cn("text-sm leading-relaxed mb-6", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
-                  {TOUR_STEPS[currentStep].description}
+                  {t(TOUR_STEPS[currentStep].descKey)}
                 </p>
                 
                 <div className="flex items-center justify-between">
-                   <span className="text-[10px] uppercase tracking-widest opacity-50">Step {currentStep + 1} of {TOUR_STEPS.length}</span>
+                   <span className="text-[10px] uppercase tracking-widest opacity-50">{t('common.step')} {currentStep + 1} {t('common.of')} {TOUR_STEPS.length}</span>
                    <button
                      onClick={handleNext}
                      className={cn(
@@ -186,7 +187,7 @@ export default function TutorialModal({ onClose }) {
                        theme === 'light' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
                      )}
                    >
-                     {currentStep === TOUR_STEPS.length - 1 ? "Finish" : "Next"}
+                     {currentStep === TOUR_STEPS.length - 1 ? t('common.finish') : t('common.next')}
                    </button>
                 </div>
               </div>
