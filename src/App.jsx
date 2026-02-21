@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
+import React from 'react';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { useTheme } from './context/ThemeContext';
+import { useAuth } from './context/AuthContext';
 import { cn } from './utils';
-import { supabase } from './supabaseClient';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Pages
@@ -10,70 +10,13 @@ import DashboardPublic from './components/DashboardPublic';
 import DashboardAdmin from './components/DashboardAdmin';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/auth/LoginPage';
-import ProtectedRoute from './components/auth/ProtectedRoute';
+import AdminRoute from './components/auth/AdminRoute';
 
 function App() {
-  const [session, setSession] = useState(null);
-  const [isInitializing, setIsInitializing] = useState(true);
+  const { session, user, isAdmin, isLoading, signInWithGoogle, signOut } = useAuth();
   const { theme } = useTheme();
-  const navigate = useNavigate();
 
-  const signInWithGoogle = async () => {
-    if (!supabase) return;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: window.location.origin + '/admin' }
-    });
-  };
-
-  const signOut = async () => {
-    if (!supabase) return;
-    await supabase.auth.signOut();
-    setSession(null);
-    navigate('/');
-  };
-
-  const claimData = async (userId) => {
-    if (!supabase) return;
-    const { count } = await supabase.from('families').select('*', { count: 'exact', head: true }).is('user_id', null);
-    if (count > 0) {
-      await supabase.from('families').update({ user_id: userId }).is('user_id', null);
-    }
-  };
-
-  useEffect(() => {
-    if (!supabase) {
-      setIsInitializing(false);
-      return;
-    }
-
-    const timeout = setTimeout(() => setIsInitializing(false), 3000);
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setIsInitializing(false);
-      clearTimeout(timeout);
-    }).catch(() => {
-      setIsInitializing(false);
-      clearTimeout(timeout);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      setSession(session);
-      setIsInitializing(false);
-      if (event === 'SIGNED_IN' && session?.user) {
-        claimData(session.user.id);
-        navigate('/admin');
-      }
-    });
-
-    return () => {
-      subscription.unsubscribe();
-      clearTimeout(timeout);
-    };
-  }, []);
-
-  if (isInitializing) {
+  if (isLoading) {
     return (
       <div className={cn(
         "min-h-screen flex items-center justify-center font-serif italic text-center",
@@ -88,16 +31,20 @@ function App() {
     <ErrorBoundary>
       <Routes>
         <Route path="/" element={
-          session ? <Navigate to="/admin" replace /> : <LandingPage onGoToLogin={() => navigate('/login')} />
+          session
+            ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)
+            : <LandingPage onGoToLogin={() => window.location.href = '/dashboard'} />
         } />
         <Route path="/login" element={
-          session ? <Navigate to="/admin" replace /> : <LoginPage onLogin={signInWithGoogle} />
+          session
+            ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)
+            : <LoginPage onLogin={signInWithGoogle} />
         } />
-        <Route path="/dashboard" element={<DashboardPublic />} />
+        <Route path="/dashboard" element={<DashboardPublic session={session} onLogout={signOut} />} />
         <Route path="/admin" element={
-          <ProtectedRoute session={session}>
-            <DashboardAdmin key={session?.user?.id} onLogout={signOut} />
-          </ProtectedRoute>
+          <AdminRoute>
+            <DashboardAdmin key={user?.id} onLogout={signOut} />
+          </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

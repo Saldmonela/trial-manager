@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { generateId } from '../../hooks/useLocalStorage';
+import { generateId } from '../../lib/familyUtils';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
 import { cn } from '../../utils';

@@ -13,27 +13,24 @@ export interface Member {
   addedAt?: string;
 }
 
+export type ProductType = 'slot' | 'account_ready' | 'account_custom';
+
 /** A family plan with owner credentials and member list. */
 export interface Family {
   id: string;
   name: string;
   notes?: string;
-  members: Member[];
-
-  // Camel-case (used in UI / hook return)
-  ownerEmail: string;
-  ownerPassword: string;
-  expiryDate: string;
-  storageUsed: number;
-  createdAt: string;
-
-  // Snake-case (raw from Supabase)
-  user_id?: string;
-  owner_email?: string;
-  owner_password?: string;
-  expiry_date?: string;
   storage_used?: number;
   created_at?: string;
+  price_monthly?: number;
+  price_annual?: number;
+  price_sale?: number;
+  priceMonthly?: number; // Alias for camelCase usage
+  priceAnnual?: number;  // Alias for camelCase usage
+  priceSale?: number;    // Alias for camelCase usage
+  currency?: string;
+  productType?: ProductType;
+  members?: Member[]; // Optional members array from join
 }
 
 /** Input shape when creating / updating a family (before Supabase insert). */
@@ -47,6 +44,11 @@ export interface FamilyInput {
   notes?: string;
   createdAt?: string;
   members?: Member[];
+  priceMonthly?: number;
+  priceAnnual?: number;
+  priceSale?: number;
+  currency?: string;
+  productType?: ProductType;
 }
 
 /** Result of an async CRUD action. */
@@ -82,6 +84,7 @@ export interface UseSupabaseDataReturn {
   deleteFamily: (familyId: string) => Promise<ActionResult>;
   addMember: (familyId: string, member: Omit<Member, 'family_id'>) => Promise<ActionResult>;
   removeMember: (familyId: string, memberId: string) => Promise<ActionResult>;
+  cancelSale: (familyId: string) => Promise<ActionResult>;
   refetch: () => Promise<void>;
 }
 
@@ -92,6 +95,14 @@ export interface PublicFamily {
   expiryDate: string | null;
   storageUsed: number;
   slotsAvailable: number;
+  priceMonthly?: number;
+  priceAnnual?: number;
+  priceSale?: number;
+  currency?: string;
+  createdAt?: string;
+  productType?: ProductType;
+  soldAt?: string | null;
+  hasPendingOrder?: boolean;
 }
 
 export interface UsePublicFamiliesReturn {
@@ -101,7 +112,7 @@ export interface UsePublicFamiliesReturn {
   refetch: () => Promise<void>;
 }
 
-export type JoinRequestStatus = 'pending' | 'approved' | 'rejected';
+export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
 
 export interface JoinRequest {
   id: string;
@@ -111,13 +122,22 @@ export interface JoinRequest {
   note: string;
   status: JoinRequestStatus;
   createdAt: string;
+  familyName?: string;
+  priceMonthly?: number;
+  priceAnnual?: number;
+  priceSale?: number;
+  currency?: string;
+  billingCycle?: 'monthly' | 'annual';
+  productType?: ProductType;
 }
 
 export interface JoinRequestInput {
-  familyId: string;
+  familyId?: string;
   name: string;
   email: string;
   note?: string;
+  billingCycle: 'monthly' | 'annual';
+  productType?: ProductType;
 }
 
 export interface UseJoinRequestsReturn {
@@ -131,4 +151,25 @@ export interface UseToastReturn {
   toasts: Toast[];
   addToast: (message: string, type?: ToastType, duration?: number) => number;
   removeToast: (id: number) => void;
+}
+
+// ─── Auth / RBAC Types ──────────────────────────────────────────
+
+export type UserRole = 'public' | 'admin';
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  role: UserRole;
+}
+
+export interface AuthContextValue {
+  session: any | null;
+  user: any | null;
+  profile: UserProfile | null;
+  role: UserRole;
+  isAdmin: boolean;
+  isLoading: boolean;
+  signInWithGoogle: () => Promise<void>;
+  signOut: () => Promise<void>;
 }

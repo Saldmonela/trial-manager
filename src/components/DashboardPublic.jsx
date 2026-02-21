@@ -1,31 +1,69 @@
 import React, { useState, useMemo, lazy, Suspense } from 'react';
-import { Link } from 'react-router-dom';
-import { Crown } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
-import { getDaysRemaining } from '../hooks/useLocalStorage';
-import { usePublicFamilies, createJoinRequest } from '../hooks/useSupabaseData';
+import { useLanguage } from '../context/LanguageContext';
+import { getDaysRemaining, MAX_FAMILY_SLOTS } from '../lib/familyUtils';
+import { usePublicFamilies, createJoinRequest, useAppSetting } from '../hooks/useSupabaseData';
 import { useToast } from '../hooks/useToast';
 import { cn } from '../utils';
-import PublicMetricsRow from './dashboard/PublicMetricsRow';
-import PublicFiltersBar from './dashboard/PublicFiltersBar';
-import FamilyCardPublic from './family/FamilyCardPublic';
+
+// Shared Components
+import DashboardHeader from './dashboard/DashboardHeader';
+import MetricsRow from './dashboard/MetricsRow';
+import FiltersBar from './dashboard/FiltersBar';
+import FamiliesGrid from './dashboard/FamiliesGrid';
+import ServicesSection from './dashboard/ServicesSection';
 import ToastContainer from './ui/ToastContainer';
 
 const JoinRequestModal = lazy(() => import('./modals/JoinRequestModal'));
+const SettingsModal = lazy(() => import('./modals/SettingsModal'));
+const TutorialModal = lazy(() => import('./TutorialModal'));
 
-export default function DashboardPublic() {
-  const { theme } = useTheme();
+export default function DashboardPublic({ session, onLogout }) {
+  const { theme, toggleTheme } = useTheme();
+  const { t, language, toggleLanguage } = useLanguage();
   const { families, loading, error, refetch } = usePublicFamilies();
   const { toasts, addToast, removeToast } = useToast();
+  
   const [joinRequestTarget, setJoinRequestTarget] = useState(null);
-  const [filter, setFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('name');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [showSettings, setShowSettings] = useState(false);
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [filter, setFilter] = useState('available');
+  const [sortBy, setSortBy] = useState('created');
+  const [sortDirection, setSortDirection] = useState('desc');
+  const [mobileSortOpen, setMobileSortOpen] = useState(false);
+  const { value: serviceStyle } = useAppSetting('service_card_style', 'editorial');
+
+  const sortOptions = [
+    { key: 'created', label: 'ADDED: OLDEST', labelAlt: 'ADDED: NEWEST' },
+    { key: 'expiry', label: 'EXPIRY: SOONEST', labelAlt: 'EXPIRY: LATEST' },
+    { key: 'storage', label: 'STORAGE: LOWEST', labelAlt: 'STORAGE: HIGHEST' },
+  ];
+
+  const handleSortClick = (key) => {
+    if (sortBy === key) {
+      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortBy(key);
+      setSortDirection('asc');
+    }
+  };
+
+  // Transform PublicFamily to Family structure for shared components
+  const mappedFamilies = useMemo(() => {
+    return families.map(f => ({
+      ...f,
+      name: f.familyName,       // Map for FamilyCard
+      notes: f.serviceName,     // Map for FamilyCard
+      soldAt: f.soldAt || null,
+      hasPendingOrder: f.hasPendingOrder || false,
+      members: Array(Math.max(0, 5 - (f.slotsAvailable || 0))).fill({ id: 'hidden' })
+    }));
+  }, [families]);
 
   const sortedFamilies = useMemo(() => {
-    const filtered = families.filter((family) => {
+    const filtered = mappedFamilies.filter((family) => {
       if (filter === 'all') return true;
-      if (filter === 'available') return family.slotsAvailable > 0;
+      if (filter === 'available') return (family.slotsAvailable || 0) > 0;
       if (filter === 'expiringSoon') {
         const daysRemaining = getDaysRemaining(family.expiryDate);
         return daysRemaining !== null && daysRemaining <= 7 && daysRemaining >= 0;
@@ -33,45 +71,79 @@ export default function DashboardPublic() {
       return true;
     });
 
+    // Sold ready accounts always go to the bottom
     return [...filtered].sort((a, b) => {
+      const aIsSold = a.productType === 'account_ready' && a.soldAt;
+      const bIsSold = b.productType === 'account_ready' && b.soldAt;
+      if (aIsSold && !bIsSold) return 1;
+      if (!aIsSold && bIsSold) return -1;
+
       let comparison = 0;
 
-      if (sortBy === 'name') {
-        comparison = (a.familyName || '').localeCompare(b.familyName || '');
-      } else if (sortBy === 'availability') {
-        comparison = (a.slotsAvailable || 0) - (b.slotsAvailable || 0);
-      } else if (sortBy === 'expiryDate') {
+      if (sortBy === 'created') {
+        const dateA = new Date(a.createdAt || 0).getTime();
+        const dateB = new Date(b.createdAt || 0).getTime();
+        comparison = dateA - dateB;
+      } else if (sortBy === 'storage') {
+        comparison = (a.storageUsed || 0) - (b.storageUsed || 0);
+      } else if (sortBy === 'expiry') {
         const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0;
         const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
+        // If one is 0 (no expiry), treat as infinity? Or 0?
+        // Let's treat No Date as "Far Future" (Latest) or "Past"?
+        // Usually No Date = Infinite validity.
+        // For now, simple timestamp comparison.
         comparison = dateA - dateB;
       }
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [families, filter, sortBy, sortDirection]);
+  }, [mappedFamilies, filter, sortBy, sortDirection]);
+
+  // Fetch global settings
+  const { value: upgradePriceSettings } = useAppSetting('upgrade_service_price', 45000);
+
+  // Static Upgrade Service (not tied to any family in DB)
+  const upgradeService = useMemo(() => ({
+    id: 'upgrade-service',
+    familyName: 'Premium Upgrade',
+    serviceName: 'Premium Upgrade',
+    name: 'Premium Upgrade',
+    notes: 'Google AI Pro',
+    productType: 'account_custom',
+    priceSale: upgradePriceSettings,
+    currency: 'IDR',
+    expiryDate: null,
+    storageUsed: 0,
+    slotsAvailable: 99, // unlimited
+  }), [upgradePriceSettings]);
+
+  const services = useMemo(() => [upgradeService], [upgradeService]);
+  const standardFamilies = sortedFamilies; // all DB families are standard now
 
   const stats = useMemo(() => {
     return {
-      totalFamilies: families.length,
-      totalAvailableSlots: families.reduce((acc, family) => acc + (family.slotsAvailable || 0), 0),
+      total: families.length,
+      availableSlots: families.reduce((acc, family) => acc + (family.slotsAvailable || 0), 0),
+      // 'full' count isn't directly needed for PublicMetricsRow if we reuse generic MetricsRow?
+      // Check MetricsRow props: { total, full, availableSlots, totalMembers }
+      full: families.filter(f => (f.slotsAvailable || 0) === 0).length,
+      totalMembers: families.reduce((acc, family) => acc + (MAX_FAMILY_SLOTS - (family.slotsAvailable || 0)), 0)
     };
   }, [families]);
 
-  const handleSortByChange = (nextSortBy) => {
-    if (sortBy === nextSortBy) {
-      setSortDirection((prev) => (prev === 'asc' ? 'desc' : 'asc'));
-      return;
-    }
-
-    setSortBy(nextSortBy);
-    setSortDirection('asc');
-  };
+  const expiringSoonCount = useMemo(() => {
+    return families.filter((f) => {
+        const days = getDaysRemaining(f.expiryDate);
+        return days !== null && days <= 7 && days >= 0;
+    }).length;
+  }, [families]);
 
   const handleJoinSubmit = async (data) => {
     if (!joinRequestTarget) return;
 
     const result = await createJoinRequest({
-      familyId: joinRequestTarget.id,
+      familyId: joinRequestTarget.id === 'upgrade-service' ? null : joinRequestTarget.id,
       ...data,
     });
 
@@ -79,7 +151,8 @@ export default function DashboardPublic() {
       addToast('Request sent successfully!', 'success');
       setJoinRequestTarget(null);
     } else {
-      addToast(result.error || 'Failed to send request', 'error');
+      // Translate the error if it's a key
+      addToast(t(result.error) || 'Failed to send request', 'error');
     }
   };
 
@@ -122,73 +195,83 @@ export default function DashboardPublic() {
   }
 
   return (
-    <div className={cn('min-h-screen', theme === 'light' ? 'bg-stone-50 text-stone-900' : 'bg-stone-950 text-stone-50')}>
-      <header
-        className={cn(
-          'sticky top-0 z-40 backdrop-blur-md border-b',
-          theme === 'light' ? 'bg-stone-50/90 border-stone-200' : 'bg-stone-950/90 border-stone-800'
-        )}
-      >
-        <div className="container mx-auto px-4 py-4 md:px-6 md:py-6 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Crown className="w-5 h-5 text-gold-500" />
-            <h1 className="font-serif text-xl md:text-2xl font-bold tracking-tight">Public Dashboard</h1>
-          </div>
-          <Link
-            to="/login"
-            className={cn(
-              'px-4 py-2 text-xs uppercase tracking-widest font-bold border transition-colors',
-              theme === 'light'
-                ? 'border-stone-900 text-stone-900 hover:bg-stone-900 hover:text-stone-50'
-                : 'border-stone-200 text-stone-200 hover:bg-stone-50 hover:text-stone-900'
-            )}
-          >
-            Admin Login
-          </Link>
-        </div>
-      </header>
+    <div className={cn('min-h-screen transition-colors duration-500 font-sans', theme === 'light' ? 'bg-stone-50 text-stone-900' : 'bg-stone-950 text-stone-50')}>
+      <DashboardHeader
+        theme={theme}
+        t={t}
+        language={language}
+        onToggleLanguage={toggleLanguage}
+        onToggleTheme={toggleTheme}
+        onOpenSettings={() => setShowSettings(true)}
+        onShowTutorial={() => setShowTutorial(true)}
+        publicMode={true}
+        session={session}
+        onLogout={onLogout}
+      />
 
       <main className="container mx-auto px-4 md:px-6 py-8">
-        <PublicMetricsRow
-          theme={theme}
-          totalFamilies={stats.totalFamilies}
-          totalAvailableSlots={stats.totalAvailableSlots}
+        <MetricsRow
+            theme={theme}
+            t={t}
+            stats={stats}
+            familiesCount={families.length}
+            expiringSoonCount={expiringSoonCount}
+            onExpiringSoonClick={() => {
+                setFilter('all');
+                setSortBy('expiry');
+                setSortDirection('asc'); // Soonest
+            }}
         />
 
-        <PublicFiltersBar
+        <FiltersBar
           theme={theme}
+          t={t}
           filter={filter}
-          setFilter={setFilter}
           sortBy={sortBy}
-          setSortBy={handleSortByChange}
           sortDirection={sortDirection}
+          sortOptions={sortOptions}
+          mobileSortOpen={mobileSortOpen}
+          setFilter={setFilter}
+          setMobileSortOpen={setMobileSortOpen}
+          onSortClick={handleSortClick}
         />
 
-        {sortedFamilies.length === 0 ? (
-          <div className={cn('border p-8 text-center', theme === 'light' ? 'bg-white border-stone-200 text-stone-500' : 'bg-stone-900 border-stone-800 text-stone-400')}>
-            No families match the selected filters.
-          </div>
-        ) : (
-          <section className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-            {sortedFamilies.map((family) => (
-              <FamilyCardPublic
-                key={family.id}
-                family={family}
-                theme={theme}
-                onJoinClick={() => setJoinRequestTarget(family)}
-              />
-            ))}
-          </section>
-        )}
+        <ServicesSection 
+          services={services}
+          theme={theme}
+          style={serviceStyle}
+          // No onToggleStyle prop here -> Button will be hidden
+          onRequest={setJoinRequestTarget}
+        />
+
+        <FamiliesGrid
+          theme={theme}
+          sortedFamilies={standardFamilies}
+          readOnly={true}
+          onRequest={setJoinRequestTarget}
+        />
       </main>
 
       <Suspense fallback={null}>
         <JoinRequestModal
           isOpen={!!joinRequestTarget}
           onClose={() => setJoinRequestTarget(null)}
-          familyName={joinRequestTarget?.familyName}
+          family={joinRequestTarget}
           onSubmit={handleJoinSubmit}
         />
+        <SettingsModal
+          isOpen={showSettings}
+          onClose={() => setShowSettings(false)}
+          language={language}
+          onToggleLanguage={toggleLanguage}
+          onShowTutorial={() => setShowTutorial(true)}
+          publicMode={true}
+          onLogout={onLogout}
+          session={session}
+        />
+        {showTutorial && (
+          <TutorialModal onClose={() => setShowTutorial(false)} publicMode={true} />
+        )}
       </Suspense>
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />

@@ -52,7 +52,10 @@ USING (
 
 CREATE POLICY "Users can create join requests"
 ON join_requests FOR INSERT
-WITH CHECK (true);
+WITH CHECK (
+  length(requester_name) > 0 AND 
+  length(requester_email) > 0
+);
 
 CREATE POLICY "Users can update join requests for their families"
 ON join_requests FOR UPDATE

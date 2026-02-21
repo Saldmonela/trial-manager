@@ -1,199 +1,229 @@
-import React, { useState, useEffect, useLayoutEffect } from 'react';
+import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
 import { cn } from '../utils';
-import { ChevronRight, X, Sparkles, Plus, Search, BarChart3 } from 'lucide-react';
+import { 
+  ChevronRight, ChevronLeft, X, Sparkles, 
+  BarChart3, Crown, Key, Users, SlidersHorizontal,
+  Inbox, LayoutGrid, Settings
+} from 'lucide-react';
 
-const TOUR_STEPS = [
-  {
-    targetId: 'tour-stats',
-    titleKey: "tutorial.steps.stats.title",
-    descKey: "tutorial.steps.stats.description",
-    icon: BarChart3,
-    position: 'bottom'
-  },
-  {
-    targetId: 'tour-new-family',
-    titleKey: "tutorial.steps.new_family.title",
-    descKey: "tutorial.steps.new_family.description",
-    icon: Plus,
-    position: 'bottom-left'
-  },
-  {
-    targetId: 'tour-search',
-    titleKey: "tutorial.steps.search.title",
-    descKey: "tutorial.steps.search.description",
-    icon: Search,
-    position: 'bottom'
-  }
-];
+const STEP_ICONS_PUBLIC = [BarChart3, Crown, Key, Users, SlidersHorizontal];
+const STEP_ICONS_ADMIN = [BarChart3, Inbox, LayoutGrid, Settings];
 
-export default function TutorialModal({ onClose }) {
+export default function TutorialModal({ onClose, publicMode = false }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
-  const [currentStep, setCurrentStep] = useState(-1); // -1 is Welcome
-  const [coords, setCoords] = useState(null);
+  const [currentStep, setCurrentStep] = useState(-1); // -1 = Welcome
+  const isDark = theme === 'dark';
 
-  useLayoutEffect(() => {
-    if (currentStep === -1) {
-      setCoords(null);
-      return;
-    }
-
-    let animationFrame;
-    const updateCoords = () => {
-      const step = TOUR_STEPS[currentStep];
-      if (!step) return;
-      
-      const el = document.getElementById(step.targetId);
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        setCoords({
-          top: rect.top,
-          left: rect.left,
-          width: rect.width,
-          height: rect.height,
-          stepPosition: step.position
-        });
-        animationFrame = requestAnimationFrame(updateCoords);
-      }
-    };
-
-    // Scroll to element once
-    const step = TOUR_STEPS[currentStep];
-    const el = document.getElementById(step.targetId);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    }
-
-    // Start continuous tracking
-    animationFrame = requestAnimationFrame(updateCoords);
-    window.addEventListener('resize', updateCoords);
-    window.addEventListener('scroll', updateCoords, true);
-
-    return () => {
-      cancelAnimationFrame(animationFrame);
-      window.removeEventListener('resize', updateCoords);
-      window.removeEventListener('scroll', updateCoords, true);
-    };
-  }, [currentStep]);
+  const mode = publicMode ? 'public' : 'admin';
+  const tutorial = t(`tutorial.${mode}`);
+  const steps = tutorial?.steps || [];
+  const welcome = tutorial?.welcome || {};
+  const icons = publicMode ? STEP_ICONS_PUBLIC : STEP_ICONS_ADMIN;
 
   const handleNext = () => {
-    if (currentStep < TOUR_STEPS.length - 1) {
+    if (currentStep < steps.length - 1) {
       setCurrentStep(prev => prev + 1);
     } else {
       onClose();
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[100] overflow-hidden pointer-events-none">
-      {/* Background Dim (Spotlight effect) */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] pointer-events-auto" onClick={onClose} />
-      
-      {/* Spotlight Hole */}
-      {coords && (
-        <motion.div
-          initial={false}
-          animate={{
-            top: coords.top - 8,
-            left: coords.left - 8,
-            width: coords.width + 16,
-            height: coords.height + 16,
-          }}
-          className="fixed bg-white/10 border-2 border-gold-500 rounded-lg shadow-[0_0_0_9999px_rgba(0,0,0,0.6)] mix-blend-overlay"
-          transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        />
-      )}
+  const handlePrev = () => {
+    if (currentStep > 0) {
+      setCurrentStep(prev => prev - 1);
+    } else if (currentStep === 0) {
+      setCurrentStep(-1);
+    }
+  };
 
-      {/* Content Container */}
-      <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-        <AnimatePresence mode="wait">
-          {currentStep === -1 ? (
-             /* Welcome Modal */
-             <motion.div
-               key="welcome"
-               initial={{ opacity: 0, scale: 0.9 }}
-               animate={{ opacity: 1, scale: 1 }}
-               exit={{ opacity: 0, scale: 0.9 }}
-               className={cn(
-                 "w-full max-w-lg p-10 text-center pointer-events-auto shadow-2xl relative overflow-hidden",
-                 theme === 'light' ? "bg-white text-stone-900" : "bg-stone-900 text-stone-50 border border-stone-800"
-               )}
-             >
-                <div className="absolute top-0 right-0 w-64 h-64 bg-gold-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2" />
-                <Sparkles className="w-16 h-16 mx-auto mb-6 text-gold-500" />
-                <h2 className="text-4xl font-serif font-bold mb-4">{t('tutorial.welcome.title')}</h2>
-                <p className={cn("text-lg mb-8 leading-relaxed", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
-                  {t('tutorial.welcome.text')}
+  const slideVariants = {
+    enter: (direction) => ({ x: direction > 0 ? 300 : -300, opacity: 0 }),
+    center: { x: 0, opacity: 1 },
+    exit: (direction) => ({ x: direction > 0 ? -300 : 300, opacity: 0 }),
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center">
+      {/* Backdrop */}
+      <div 
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
+        onClick={onClose} 
+      />
+      
+      {/* Modal */}
+      <div className={cn(
+        "relative z-10 w-[92%] max-w-lg overflow-hidden shadow-2xl",
+        isDark 
+          ? "bg-stone-900 border border-stone-800" 
+          : "bg-white border border-stone-200"
+      )}>
+        {/* Close button */}
+        <button 
+          onClick={onClose}
+          className={cn(
+            "absolute top-4 right-4 z-20 p-1.5 rounded-full transition-colors",
+            isDark ? "text-stone-500 hover:text-stone-300 hover:bg-stone-800" : "text-stone-400 hover:text-stone-700 hover:bg-stone-100"
+          )}
+        >
+          <X className="w-4 h-4" />
+        </button>
+
+        {/* Progress bar */}
+        {currentStep >= 0 && (
+          <div className={cn("h-1 w-full", isDark ? "bg-stone-800" : "bg-stone-100")}>
+            <motion.div 
+              className="h-full bg-gold-500"
+              initial={false}
+              animate={{ width: `${((currentStep + 1) / steps.length) * 100}%` }}
+              transition={{ duration: 0.4, ease: 'easeInOut' }}
+            />
+          </div>
+        )}
+
+        {/* Content */}
+        <div className="relative min-h-[340px] flex items-center justify-center px-8 py-10 md:px-12">
+          <AnimatePresence mode="wait" custom={1}>
+            {currentStep === -1 ? (
+              /* Welcome Slide */
+              <motion.div
+                key="welcome"
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.9 }}
+                transition={{ duration: 0.3 }}
+                className="text-center w-full"
+              >
+                <div className="absolute top-0 right-0 w-48 h-48 bg-gold-500/10 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                <Sparkles className="w-14 h-14 mx-auto mb-5 text-gold-500" />
+                <h2 className={cn(
+                  "text-3xl font-serif font-bold mb-3",
+                  isDark ? "text-stone-50" : "text-stone-900"
+                )}>
+                  {welcome.title}
+                </h2>
+                <p className={cn(
+                  "text-sm leading-relaxed mb-8 max-w-sm mx-auto",
+                  isDark ? "text-stone-400" : "text-stone-500"
+                )}>
+                  {welcome.text}
                 </p>
                 <button
                   onClick={() => setCurrentStep(0)}
                   className={cn(
-                    "w-full py-4 font-bold tracking-[0.2em] uppercase transition-all hover:-translate-y-1 shadow-lg",
-                    theme === 'light' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
+                    "w-full py-3.5 font-bold tracking-[0.2em] uppercase text-sm transition-all hover:-translate-y-0.5 shadow-lg",
+                    isDark ? "bg-stone-50 text-stone-900" : "bg-stone-900 text-white"
                   )}
                 >
-                  {t('tutorial.welcome.cta')}
+                  {welcome.cta}
                 </button>
-                <button onClick={onClose} className="mt-4 text-xs uppercase tracking-widest opacity-50 hover:opacity-100 transition-opacity">{t('common.skip')}</button>
-             </motion.div>
-          ) : (
-            /* Tooltip Overlay */
-            <motion.div
-              key={currentStep}
-              initial={{ opacity: 0, scale: 0.95, y: 20, x: '-50%' }}
-              animate={coords ? {
-                opacity: 1, 
-                scale: 1,
-                y: 0,
-                x: '-50%',
-                // On Mobile: always fixed at bottom. On Desktop: follow coords
-                top: window.innerWidth < 768 ? 'auto' : (coords.top + coords.height + 24),
-                bottom: window.innerWidth < 768 ? '32px' : 'auto',
-                left: window.innerWidth < 768 ? '50%' : (coords.left + (coords.width / 2)),
-              } : { opacity: 1, y: 0, scale: 1, x: '-50%', top: '50%', left: '50%' }}
-              transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+                <button 
+                  onClick={onClose} 
+                  className="mt-3 text-[10px] uppercase tracking-widest opacity-40 hover:opacity-100 transition-opacity block mx-auto"
+                >
+                  Skip
+                </button>
+              </motion.div>
+            ) : (
+              /* Step Slides */
+              <motion.div
+                key={currentStep}
+                custom={1}
+                variants={slideVariants}
+                initial="enter"
+                animate="center"
+                exit="exit"
+                transition={{ type: 'spring', damping: 30, stiffness: 300 }}
+                className="text-center w-full"
+              >
+                {/* Icon */}
+                <div className={cn(
+                  "w-16 h-16 mx-auto mb-5 flex items-center justify-center rounded-2xl",
+                  isDark ? "bg-gold-500/10" : "bg-gold-500/10"
+                )}>
+                  {React.createElement(icons[currentStep] || Sparkles, { 
+                    className: "w-8 h-8 text-gold-500" 
+                  })}
+                </div>
+
+                {/* Step Counter */}
+                <span className={cn(
+                  "text-[10px] uppercase tracking-[0.3em] font-bold mb-2 block",
+                  isDark ? "text-gold-500" : "text-gold-600"
+                )}>
+                  Step {currentStep + 1} of {steps.length}
+                </span>
+
+                {/* Title */}
+                <h3 className={cn(
+                  "text-2xl font-serif font-bold mb-3",
+                  isDark ? "text-stone-50" : "text-stone-900"
+                )}>
+                  {steps[currentStep]?.title}
+                </h3>
+
+                {/* Description */}
+                <p className={cn(
+                  "text-sm leading-relaxed max-w-sm mx-auto",
+                  isDark ? "text-stone-400" : "text-stone-500"
+                )}>
+                  {steps[currentStep]?.description}
+                </p>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Footer Navigation */}
+        {currentStep >= 0 && (
+          <div className={cn(
+            "px-8 py-5 flex items-center justify-between border-t",
+            isDark ? "border-stone-800" : "border-stone-100"
+          )}>
+            {/* Back */}
+            <button
+              onClick={handlePrev}
               className={cn(
-                "fixed z-[110] p-6 shadow-2xl pointer-events-auto transition-colors",
-                "w-[92%] md:w-[360px] rounded-2xl md:rounded-none", 
-                theme === 'light' ? "bg-white text-stone-900 border border-stone-200" : "bg-stone-900 text-stone-50 border border-stone-800"
+                "flex items-center gap-1 text-xs font-bold uppercase tracking-widest transition-colors",
+                isDark ? "text-stone-500 hover:text-stone-300" : "text-stone-400 hover:text-stone-700"
               )}
             >
-              {/* Arrow - Hidden on mobile */}
-              <div className={cn(
-                "hidden md:block absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 rotate-45 border-t border-l",
-                theme === 'light' ? "bg-white border-stone-200" : "bg-stone-900 border-stone-800"
-              )} />
-              
-              <div className="relative z-10">
-                <div className="flex items-center gap-3 mb-3">
-                   <div className="p-2 bg-gold-500/10 rounded-lg">
-                      {React.createElement(TOUR_STEPS[currentStep].icon, { className: "w-5 h-5 text-gold-500" })}
-                   </div>
-                   <h3 className="font-serif font-bold text-lg">{t(TOUR_STEPS[currentStep].titleKey)}</h3>
-                </div>
-                <p className={cn("text-sm leading-relaxed mb-6", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
-                  {t(TOUR_STEPS[currentStep].descKey)}
-                </p>
-                
-                <div className="flex items-center justify-between">
-                   <span className="text-[10px] uppercase tracking-widest opacity-50">{t('common.step')} {currentStep + 1} {t('common.of')} {TOUR_STEPS.length}</span>
-                   <button
-                     onClick={handleNext}
-                     className={cn(
-                       "px-6 py-2 text-xs font-bold uppercase tracking-widest transition-all",
-                       theme === 'light' ? "bg-stone-900 text-white" : "bg-white text-stone-900"
-                     )}
-                   >
-                     {currentStep === TOUR_STEPS.length - 1 ? t('common.finish') : t('common.next')}
-                   </button>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+              <ChevronLeft className="w-3.5 h-3.5" />
+              Back
+            </button>
+
+            {/* Dots */}
+            <div className="flex items-center gap-2">
+              {steps.map((_, i) => (
+                <button
+                  key={i}
+                  onClick={() => setCurrentStep(i)}
+                  className={cn(
+                    "w-2 h-2 rounded-full transition-all",
+                    i === currentStep 
+                      ? "bg-gold-500 scale-125" 
+                      : isDark ? "bg-stone-700 hover:bg-stone-600" : "bg-stone-300 hover:bg-stone-400"
+                  )}
+                />
+              ))}
+            </div>
+
+            {/* Next / Finish */}
+            <button
+              onClick={handleNext}
+              className={cn(
+                "flex items-center gap-1 px-5 py-2 text-xs font-bold uppercase tracking-widest transition-all hover:-translate-y-0.5",
+                isDark ? "bg-stone-50 text-stone-900" : "bg-stone-900 text-white"
+              )}
+            >
+              {currentStep === steps.length - 1 ? 'Finish' : 'Next'}
+              <ChevronRight className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

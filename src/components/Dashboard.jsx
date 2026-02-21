@@ -2,32 +2,60 @@ import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
-import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../hooks/useLocalStorage';
-import { useSupabaseData } from '../hooks/useSupabaseData';
+import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../lib/familyUtils';
+import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useSupabaseData, useAppSetting, updateSetting, useJoinRequests } from '../hooks/useSupabaseData';
 import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
 import { useTheme } from '../context/ThemeContext';
+import { useAuth } from '../context/AuthContext';
 import { useLanguage } from '../context/LanguageContext';
 import DashboardHeader from './dashboard/DashboardHeader';
 import MetricsRow from './dashboard/MetricsRow';
 import FiltersBar from './dashboard/FiltersBar';
 import FamiliesGrid from './dashboard/FamiliesGrid';
+import ServicesSection from './dashboard/ServicesSection';
 
 const AddFamilyModal = lazy(() => import('./modals/AddFamilyModal'));
 const EditFamilyModal = lazy(() => import('./modals/EditFamilyModal'));
 const AddMemberModal = lazy(() => import('./modals/AddMemberModal'));
 const DeleteConfirmModal = lazy(() => import('./modals/DeleteConfirmModal'));
-const JoinRequestsListModal = lazy(() => import('./modals/JoinRequestsListModal'));
+const OrderManagementModal = lazy(() => import('./modals/OrderManagementModal'));
 const MigrationTool = lazy(() => import('./MigrationTool'));
 const TutorialModal = lazy(() => import('./TutorialModal'));
+const SettingsModal = lazy(() => import('./modals/SettingsModal'));
 import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
 export default function Dashboard({ onLogout }) {
   const { theme, toggleTheme } = useTheme();
+  const { session } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
-  const { families, loading, addFamily, updateFamily, deleteFamily, addMember, removeMember } = useSupabaseData();
+
+  const { 
+    families, 
+    loading, 
+    addFamily, 
+    updateFamily, 
+    deleteFamily, 
+    addMember, 
+    removeMember,
+    cancelSale
+  } = useSupabaseData();
+  const { joinRequests: allOrders, refetch: refetchOrders, updateStatus } = useJoinRequests();
   const { toasts, addToast, removeToast } = useToast();
+  const pendingCount = useMemo(() => allOrders.filter(r => r.status === 'pending').length, [allOrders]);
+
+  // Group pending orders by familyId for inline display on cards
+  const pendingOrdersByFamily = useMemo(() => {
+    const map = {};
+    allOrders.filter(r => r.status === 'pending').forEach(order => {
+      const key = order.familyId || '__no_family__';
+      if (!map[key]) map[key] = [];
+      map[key].push(order);
+    });
+    return map;
+  }, [allOrders]);
 
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
   const [isJoinRequestsOpen, setIsJoinRequestsOpen] = useState(false);
@@ -36,25 +64,30 @@ export default function Dashboard({ onLogout }) {
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [sortBy, setSortBy] = useState('expiry');
-  const [sortDirection, setSortDirection] = useState('asc');
+  const [sortBy, setSortBy] = useState('created');
+  const [sortDirection, setSortDirection] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
   const [showMigration, setShowMigration] = useState(false);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  
+  // Design Setting
+  const { value: serviceStyle, setValue: setServiceStyle } = useAppSetting('service_card_style', 'editorial');
 
   const sortOptions = [
-    { key: 'created', label: 'Newest', labelAlt: 'Oldest' },
-    { key: 'expiry', label: 'Expiry: Soonest', labelAlt: 'Expiry: Latest' },
-    { key: 'storage', label: 'Storage: Highest', labelAlt: 'Storage: Lowest' },
+    { key: 'created', label: 'ADDED: OLDEST', labelAlt: 'ADDED: NEWEST' },
+    { key: 'expiry', label: 'EXPIRY: SOONEST', labelAlt: 'EXPIRY: LATEST' },
+    { key: 'storage', label: 'STORAGE: LOWEST', labelAlt: 'STORAGE: HIGHEST' },
   ];
 
   useEffect(() => {
+    let tutorialTimer;
     async function checkTutorialStatus() {
+      if (!supabase) return;
       const {
         data: { user },
       } = await supabase.auth.getUser();
-      if (!user) return;
 
       const tourKey = `fm_tour_seen_${user.id}`;
       const hasSeen = localStorage.getItem(tourKey);
@@ -64,11 +97,15 @@ export default function Dashboard({ onLogout }) {
       const isNewUser = Date.now() - createdAt < tenMinutes;
 
       if (!hasSeen && isNewUser) {
-        setTimeout(() => setShowTutorial(true), 2000);
+        tutorialTimer = setTimeout(() => setShowTutorial(true), 2000);
       }
     }
 
     checkTutorialStatus();
+
+    return () => {
+      if (tutorialTimer) clearTimeout(tutorialTimer);
+    };
   }, []);
 
   const handleTutorialClose = useCallback(async () => {
@@ -177,6 +214,7 @@ export default function Dashboard({ onLogout }) {
 
   const sortedFamilies = useMemo(() => {
     const filtered = families.filter((f) => {
+
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
       if (filter === 'available') return !isFamilyFull(f);
@@ -189,18 +227,16 @@ export default function Dashboard({ onLogout }) {
       if (sortBy === 'expiry') {
         const dateA = a.expiryDate ? new Date(a.expiryDate).getTime() : 0;
         const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
-        comparison = dateB - dateA;
+        comparison = dateA - dateB;
       } else if (sortBy === 'storage') {
-        const storageA = a.storageUsed || 0;
-        const storageB = b.storageUsed || 0;
-        comparison = storageB - storageA;
-      } else {
+        comparison = (a.storageUsed || 0) - (b.storageUsed || 0);
+      } else { // created
         const dateA = new Date(a.createdAt).getTime();
         const dateB = new Date(b.createdAt).getTime();
-        comparison = dateB - dateA;
+        comparison = dateA - dateB;
       }
 
-      return sortDirection === 'asc' ? -comparison : comparison;
+      return sortDirection === 'asc' ? comparison : -comparison;
     });
   }, [families, filter, sortBy, sortDirection]);
 
@@ -211,8 +247,12 @@ export default function Dashboard({ onLogout }) {
       availableSlots: families.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
       totalMembers: families.reduce((acc, f) => acc + (f.members?.length || 0), 0),
     }),
+
     [families]
   );
+  
+  // No more services section in admin (upgrade is standalone in public)
+  const services = [];
 
   const expiringSoonCount = useMemo(() => {
     return families.filter((f) => {
@@ -246,6 +286,8 @@ export default function Dashboard({ onLogout }) {
         onToggleTheme={toggleTheme}
         onOpenAddFamily={() => setIsAddFamilyOpen(true)}
         onOpenJoinRequests={() => setIsJoinRequestsOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        pendingCount={pendingCount}
       />
 
       <main className="container mx-auto px-6 py-8">
@@ -330,7 +372,7 @@ export default function Dashboard({ onLogout }) {
                   <div className="flex items-center gap-3">
                     <Check className={cn('w-5 h-5', theme === 'light' ? 'text-stone-400' : 'text-stone-500')} />
                     <span className={cn('font-serif italic', theme === 'light' ? 'text-stone-600' : 'text-stone-400')}>
-                      Email <strong className={cn(theme === 'light' ? 'text-stone-900' : 'text-stone-200')}>&quot;{searchQuery}&quot;</strong> belum terdaftar.
+                      {t('dashboard.email_not_found').replace('{email}', searchQuery)}
                     </span>
                   </div>
                 ) : (
@@ -393,7 +435,7 @@ export default function Dashboard({ onLogout }) {
           onExpiringSoonClick={() => {
             setFilter('all');
             setSortBy('expiry');
-            setSortDirection('asc');
+            setSortDirection('asc'); // Soonest
           }}
         />
 
@@ -410,6 +452,23 @@ export default function Dashboard({ onLogout }) {
           onSortClick={handleSortClick}
         />
 
+        <ServicesSection 
+          services={services}
+          theme={theme}
+          style={serviceStyle}
+          onToggleStyle={async () => {
+             const prevStyle = serviceStyle;
+             const newStyle = serviceStyle === 'editorial' ? 'modern' : 'editorial';
+             setServiceStyle(newStyle); // Optimistic
+             const result = await updateSetting('service_card_style', newStyle);
+             if (!result.success) {
+               setServiceStyle(prevStyle); // Rollback on failure
+             }
+          }}
+          onRequest={() => {}} // No action needed for admin on click? or open edit?
+          // Maybe open edit modal?
+        />
+
         <FamiliesGrid
           theme={theme}
           sortedFamilies={sortedFamilies}
@@ -418,13 +477,51 @@ export default function Dashboard({ onLogout }) {
           onEdit={setEditFamily}
           onAddMember={setAddMemberFamilyId}
           onRemoveMember={handleRemoveMember}
+          onCancelSale={async (familyId) => {
+            const result = await cancelSale(familyId);
+            if (result.success) {
+              await refetchOrders();
+              addToast('Sale cancelled! Account is now available again.', 'success');
+            } else {
+              addToast(`Failed to cancel sale: ${result.error}`, 'error');
+            }
+          }}
+          pendingOrdersByFamily={pendingOrdersByFamily}
+          onApproveOrder={async (requestId, request) => {
+            const result = await updateStatus(requestId, 'approved');
+            if (result?.success !== false) {
+              await refetchOrders();
+              addToast(`✅ Order dari ${request.name} approved!`, 'success');
+            } else {
+              addToast(`Gagal approve: ${result?.error || 'Unknown error'}`, 'error');
+            }
+          }}
+          onRejectOrder={async (requestId, request) => {
+            const result = await updateStatus(requestId, 'rejected');
+            if (result?.success !== false) {
+              await refetchOrders();
+              addToast(`❌ Order dari ${request.name} rejected.`, 'error');
+            } else {
+              addToast(`Gagal reject: ${result?.error || 'Unknown error'}`, 'error');
+            }
+          }}
         />
       </main>
 
       <Suspense fallback={null}>
         <AddFamilyModal isOpen={isAddFamilyOpen} onClose={() => setIsAddFamilyOpen(false)} onAdd={handleAddFamily} />
 
-        <JoinRequestsListModal isOpen={isJoinRequestsOpen} onClose={() => setIsJoinRequestsOpen(false)} />
+        <OrderManagementModal isOpen={isJoinRequestsOpen} onClose={() => setIsJoinRequestsOpen(false)} />
+
+        <SettingsModal
+          isOpen={isSettingsOpen}
+          onClose={() => setIsSettingsOpen(false)}
+          language={language}
+          onToggleLanguage={toggleLanguage}
+          onShowTutorial={() => setShowTutorial(true)}
+          onLogout={onLogout}
+          session={supabase ? session : null}
+        />
 
         <EditFamilyModal isOpen={!!editFamily} onClose={() => setEditFamily(null)} onSave={handleEditFamily} family={editFamily} />
 

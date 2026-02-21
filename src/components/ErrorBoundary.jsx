@@ -29,19 +29,32 @@ export class ErrorBoundary extends React.Component {
 }
 
 function ErrorFallback({ error, onRetry }) {
+  const { theme } = useTheme();
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-stone-950 text-stone-50 p-8">
+    <div className={cn(
+      "min-h-screen flex items-center justify-center p-8 transition-colors",
+      theme === 'light' ? "bg-stone-50 text-stone-900" : "bg-stone-950 text-stone-50"
+    )}>
       <div className="max-w-md text-center space-y-6">
-        <div className="w-16 h-16 mx-auto flex items-center justify-center bg-red-900/20 rounded-2xl">
+        <div className={cn(
+          "w-16 h-16 mx-auto flex items-center justify-center rounded-2xl",
+          theme === 'light' ? "bg-red-100 text-red-600" : "bg-red-900/20 text-red-500"
+        )}>
           <span className="text-3xl">⚠️</span>
         </div>
         <h2 className="font-serif text-2xl font-bold">Something went wrong</h2>
-        <p className="text-stone-400 text-sm">
+        <p className={cn("text-sm", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
           {error?.message || 'An unexpected error occurred. Please try again.'}
         </p>
         <button
           onClick={onRetry}
-          className="px-8 py-3 bg-stone-50 text-stone-900 font-bold text-xs uppercase tracking-widest hover:bg-stone-200 transition-colors"
+          className={cn(
+            "px-8 py-3 font-bold text-xs uppercase tracking-widest transition-colors",
+            theme === 'light'
+              ? "bg-stone-900 text-stone-50 hover:bg-stone-700"
+              : "bg-stone-50 text-stone-900 hover:bg-stone-200"
+          )}
         >
           Try Again
         </button>

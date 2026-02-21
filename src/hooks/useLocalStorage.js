@@ -29,10 +29,4 @@ export function useLocalStorage(key, initialValue) {
 // Looking at imports in FamilyCard: import { ... } from '../../hooks/useLocalStorage';
 // So we must re-export them.
 
-export {
-  generateId,
-  MAX_FAMILY_SLOTS,
-  MAX_STORAGE_GB,
-  getSlotsUsed, getSlotsAvailable,
-  isFamilyFull, getDaysRemaining, getExpiryStatus
-} from '../lib/familyUtils';
+

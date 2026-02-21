@@ -89,7 +89,7 @@ export default function LandingPage({ onGoToLogin }) {
             to="/login"
             className="text-xs uppercase tracking-widest font-bold hover:text-gold-500 transition-colors"
           >
-            Admin Login
+            Login
           </Link>
         </div>
       </nav>

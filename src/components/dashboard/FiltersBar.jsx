@@ -22,9 +22,9 @@ export default function FiltersBar({
     >
       <div className="flex gap-6">
         {[
-          { key: 'all', label: t('dashboard.filters.all') },
           { key: 'available', label: t('dashboard.filters.available') },
           { key: 'full', label: t('dashboard.filters.full') },
+          { key: 'all', label: t('dashboard.filters.all') },
         ].map((f) => (
           <button
             key={f.key}

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { generateId } from '../../hooks/useLocalStorage';
+import { generateId } from '../../lib/familyUtils';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
 import { cn } from '../../utils';
@@ -16,6 +16,10 @@ export default function AddFamilyModal({ isOpen, onClose, onAdd }) {
     expiryDate: '',
     storageUsed: '',
     notes: '',
+    priceMonthly: '',
+    priceAnnual: '',
+    priceSale: '',
+    productType: 'slot',
   });
 
   const handleSubmit = (e) => {
@@ -28,9 +32,14 @@ export default function AddFamilyModal({ isOpen, onClose, onAdd }) {
       id: generateId(),
       members: [],
       createdAt: new Date().toISOString(),
+      priceMonthly: Number(formData.priceMonthly) || 0,
+      priceAnnual: Number(formData.priceAnnual) || 0,
+      priceSale: Number(formData.priceSale) || 0,
+      currency: 'IDR',
+      productType: formData.productType,
     });
     
-    setFormData({ name: '', ownerEmail: '', ownerPassword: '', expiryDate: '', storageUsed: '', notes: '' });
+    setFormData({ name: '', ownerEmail: '', ownerPassword: '', expiryDate: '', storageUsed: '', notes: '', priceMonthly: '', priceAnnual: '', priceSale: '' });
     onClose();
   };
 
@@ -38,12 +47,24 @@ export default function AddFamilyModal({ isOpen, onClose, onAdd }) {
     <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.title_new')}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
-          <FormField
-            label={t('dashboard.form.name_label')}
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-            placeholder="e.g., The Smiths, Premium A"
-          />
+          <div className="grid grid-cols-2 gap-4">
+             <FormField
+                label="Sales Type"
+                value={formData.productType}
+                onChange={(e) => setFormData({ ...formData, productType: e.target.value })}
+                type="select"
+                options={[
+                  { value: 'slot', label: 'Shared Slot' },
+                  { value: 'account_ready', label: 'Ready Account (Pre-made)' },
+                ]}
+             />
+             <FormField
+                label={t('dashboard.form.name_label')}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., The Smiths"
+             />
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
             <FormField
@@ -70,13 +91,33 @@ export default function AddFamilyModal({ isOpen, onClose, onAdd }) {
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
             />
+            
+            {formData.productType === 'slot' && (
+              <FormField
+                label={t('dashboard.form.storage_label')}
+                type="number"
+                value={formData.storageUsed}
+                onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
+                placeholder="0"
+                max="2048"
+              />
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
             <FormField
-              label={t('dashboard.form.storage_label')}
+              label="Monthly Price (IDR)"
               type="number"
-              value={formData.storageUsed}
-              onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
-              placeholder="0"
-              max="2048"
+              value={formData.priceMonthly}
+              onChange={(e) => setFormData({ ...formData, priceMonthly: e.target.value })}
+              placeholder="25000"
+            />
+            <FormField
+              label="Annual Price (IDR)"
+              type="number"
+              value={formData.priceAnnual}
+              onChange={(e) => setFormData({ ...formData, priceAnnual: e.target.value })}
+              placeholder="300000"
             />
           </div>
 

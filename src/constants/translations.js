@@ -39,7 +39,11 @@ export const translations = {
       help: "Help",
       new_family: "New Family",
       show_import: "Show Import Tool",
+      help: "Help",
+      new_family: "New Family",
+      show_import: "Show Import Tool",
       search_placeholder: "Search families, emails, or members",
+      email_not_found: 'Email "{email}" not found.',
       filters: {
         all: "All Families",
         available: "Space Available",
@@ -57,7 +61,7 @@ export const translations = {
       stats: {
         total_families: "Total Families",
         full_capacity: "Full Capacity",
-        available_slots: "Available Slots",
+        available_slots: "Available Sharing",
         total_members: "Total Members",
         status: {
           spacious: "SPACIOUS",
@@ -74,6 +78,9 @@ export const translations = {
         description: "Experience a new level of organization for your Google AI Family Plans.",
         cta: "Create First Family",
         footer: "Securely synced with Supabase Cloud",
+      },
+      errors: {
+        pending_request: "You already have a pending request for this service. Please wait for the admin to process it.",
       },
       family_card: {
         owner: "Owner",
@@ -112,25 +119,60 @@ export const translations = {
       }
     },
     tutorial: {
-      welcome: {
-        title: "Welcome Home",
-        text: "Ready to manage your premium Google AI plans with pure elegance? Let's show you how it works in 3 seconds.",
-        cta: "Start Guided Tour",
+      public: {
+        welcome: {
+          title: "Welcome!",
+          text: "Discover premium Google AI accounts at the best prices. Let us show you around in a few quick steps.",
+          cta: "Show Me Around",
+        },
+        steps: [
+          {
+            title: "Dashboard Overview",
+            description: "The stats bar gives you a quick snapshot — total families, capacity, available sharing slots, and member counts.",
+          },
+          {
+            title: "Premium Upgrades",
+            description: "Upgrade your personal Google account to premium! One-time payment, no subscription, full warranty, and instant activation.",
+          },
+          {
+            title: "Ready Accounts",
+            description: "Ready Accounts are fully set up and ready to use. Buy one and it's exclusively yours. Look for the green 'Ready Account' badge.",
+          },
+          {
+            title: "Sharing Accounts",
+            description: "Join a shared Google AI Family plan at a lower cost. You'll share the family slot with others. Look for the blue 'Sharing Account' badge.",
+          },
+          {
+            title: "Filters & Sorting",
+            description: "Use filters to show available or fully booked plans. Sort by newest, expiry date, or storage to find the best option.",
+          },
+        ],
       },
-      steps: {
-        stats: {
-          title: "Quick Statistics",
-          description: "Monitor your entire collection at a glance. See total families, available slots, and member counts.",
+      admin: {
+        welcome: {
+          title: "Welcome Home",
+          text: "Manage your premium Google AI plans with elegance. Here's a quick tour of your admin dashboard.",
+          cta: "Start Guided Tour",
         },
-        new_family: {
-          title: "Create Your First Plan",
-          description: "Click here to add a new Google AI Family. You can input the owner's email, password, and set renewal alerts.",
-        },
-        search: {
-          title: "Powerful Search",
-          description: "Looking for a specific member or email? Find which family they belong to instantly across all your accounts.",
-        }
-      }
+        steps: [
+          {
+            title: "Quick Statistics",
+            description: "Monitor your entire collection at a glance — total families, available slots, capacity usage, and member counts.",
+          },
+          {
+            title: "Managing Orders",
+            description: "The inbox icon shows incoming orders. Review, approve, or reject join requests from customers in one click.",
+          },
+          {
+            title: "Family Cards",
+            description: "Each card shows members, expiry dates, storage, and pending orders. Use the edit and delete buttons on each card.",
+          },
+          {
+            title: "Settings & Search",
+            description: "Use the search bar to find members across all families. Open Settings to configure pricing and UI preferences.",
+          },
+        ],
+      },
     },
     landing: {
       hero_title: "Orchestrate Your",
@@ -153,6 +195,10 @@ export const translations = {
         secure_vault: {
           title: "Secure Vault",
           desc: "Enterprise-grade encryption for all your credentials and member data.",
+        },
+        premium_ui: {
+          title: "Premium UI",
+          desc: "Editorial design experience that feels more like a luxury magazine than a tool.",
         }
       }
     }
@@ -197,10 +243,13 @@ export const translations = {
       help: "Bantuan",
       new_family: "Keluarga Baru",
       show_import: "Buka Alat Impor",
+      new_family: "Keluarga Baru",
+      show_import: "Buka Alat Impor",
       search_placeholder: "Cari keluarga, email, atau anggota",
+      email_not_found: 'Email "{email}" belum terdaftar.',
       filters: {
         all: "Semua Keluarga",
-        available: "Slot Tersedia",
+        available: "Sharing Tersedia",
         full: "Penuh",
       },
       sort: {
@@ -215,7 +264,7 @@ export const translations = {
       stats: {
         total_families: "Total Keluarga",
         full_capacity: "Kapasitas Penuh",
-        available_slots: "Slot Tersedia",
+        available_slots: "Sharing Tersedia",
         total_members: "Total Anggota",
         status: {
           spacious: "LEGA",
@@ -232,6 +281,9 @@ export const translations = {
         description: "Rasakan tingkat organisasi baru untuk Google AI Family Plan Anda.",
         cta: "Buat Keluarga Pertama",
         footer: "Disinkronkan dengan aman ke Supabase Cloud",
+      },
+      errors: {
+        pending_request: "Sudah ada permintaan pending untuk layanan ini. Mohon tunggu admin memprosesnya.",
       },
       family_card: {
         owner: "Pemilik",
@@ -270,25 +322,60 @@ export const translations = {
       }
     },
     tutorial: {
-      welcome: {
-        title: "Selamat Datang",
-        text: "Siap mengelola Google AI Plan premium Anda dengan elegan? Mari kita lihat caranya dalam 3 detik.",
-        cta: "Mulai Tur",
+      public: {
+        welcome: {
+          title: "Selamat Datang!",
+          text: "Temukan akun Google AI premium dengan harga terbaik. Mari kami tunjukkan dalam beberapa langkah singkat.",
+          cta: "Tunjukkan",
+        },
+        steps: [
+          {
+            title: "Ringkasan Dashboard",
+            description: "Bar statistik menampilkan ringkasan cepat — total keluarga, kapasitas, slot sharing tersedia, dan jumlah anggota.",
+          },
+          {
+            title: "Upgrade Premium",
+            description: "Upgrade akun Google personal kamu ke premium! Bayar sekali, tanpa langganan, garansi penuh, dan aktivasi instan.",
+          },
+          {
+            title: "Akun Siap Pakai",
+            description: "Akun Siap Pakai sudah disetup dan siap digunakan. Beli dan akun itu milikmu sepenuhnya. Cari badge hijau 'Ready Account'.",
+          },
+          {
+            title: "Akun Sharing",
+            description: "Gabung ke Google AI Family Plan bersama dengan biaya lebih murah. Kamu berbagi slot keluarga dengan orang lain. Cari badge biru 'Sharing Account'.",
+          },
+          {
+            title: "Filter & Sortir",
+            description: "Gunakan filter untuk menampilkan plan yang tersedia atau penuh. Sortir berdasarkan terbaru, tanggal kadaluarsa, atau storage.",
+          },
+        ],
       },
-      steps: {
-        stats: {
-          title: "Statistik Cepat",
-          description: "Pantau seluruh koleksi Anda sekilas. Lihat total keluarga, slot tersedia, dan jumlah anggota.",
+      admin: {
+        welcome: {
+          title: "Selamat Datang",
+          text: "Kelola Google AI Plan premium dengan elegan. Ini tur singkat dashboard admin kamu.",
+          cta: "Mulai Tur",
         },
-        new_family: {
-          title: "Buat Plan Pertama",
-          description: "Klik di sini untuk menambah Keluarga Google AI baru. Anda bisa input email pemilik, kata sandi, dan atur pengingat perpanjangan.",
-        },
-        search: {
-          title: "Pencarian Canggih",
-          description: "Mencari anggota atau email tertentu? Temukan di keluarga mana mereka berada secara instan di semua akun.",
-        }
-      }
+        steps: [
+          {
+            title: "Statistik Cepat",
+            description: "Pantau seluruh koleksi sekilas — total keluarga, slot tersedia, penggunaan kapasitas, dan jumlah anggota.",
+          },
+          {
+            title: "Kelola Pesanan",
+            description: "Ikon inbox menampilkan pesanan masuk. Review, setujui, atau tolak permintaan gabung dari pelanggan dalam satu klik.",
+          },
+          {
+            title: "Kartu Keluarga",
+            description: "Setiap kartu menampilkan anggota, tanggal kadaluarsa, storage, dan pesanan pending. Gunakan tombol edit dan hapus di setiap kartu.",
+          },
+          {
+            title: "Pengaturan & Pencarian",
+            description: "Gunakan pencarian untuk menemukan anggota di semua keluarga. Buka Pengaturan untuk konfigurasi harga dan preferensi UI.",
+          },
+        ],
+      },
     },
     landing: {
       hero_title: "Orkestrasi",

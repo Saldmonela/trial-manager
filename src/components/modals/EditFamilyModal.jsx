@@ -17,6 +17,10 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
     expiryDate: family?.expiryDate || '',
     storageUsed: family?.storageUsed,
     notes: family?.notes || '',
+    priceMonthly: family?.priceMonthly || '',
+    priceAnnual: family?.priceAnnual || '',
+    priceSale: family?.priceSale || '',
+    productType: family?.productType || 'slot',
   });
 
   const formatDateForInput = (dateString) => {
@@ -39,6 +43,10 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
         expiryDate: formatDateForInput(family.expiryDate),
         storageUsed: family.storageUsed,
         notes: family.notes || '',
+        priceMonthly: family.priceMonthly || '',
+        priceAnnual: family.priceAnnual || '',
+        priceSale: family.priceSale || '',
+        productType: family.productType || 'slot',
       });
     }
   }, [family]);
@@ -51,6 +59,11 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
       ...family,
       ...formData,
       storageUsed: Number(formData.storageUsed) || 0,
+      priceMonthly: Number(formData.priceMonthly) || 0,
+      priceAnnual: Number(formData.priceAnnual) || 0,
+      priceSale: Number(formData.priceSale) || 0,
+      currency: 'IDR',
+      productType: formData.productType,
     });
     
     onClose();
@@ -62,11 +75,23 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
     <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.title_edit')}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <div className="space-y-4">
-          <FormField
-            label={t('dashboard.form.name_label')}
-            value={formData.name}
-            onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          />
+          <div className="grid grid-cols-2 gap-4">
+             <FormField
+                label="Sales Type"
+                value={formData.productType}
+                onChange={(e) => setFormData({ ...formData, productType: e.target.value })}
+                type="select"
+                options={[
+                  { value: 'slot', label: 'Shared Slot' },
+                  { value: 'account_ready', label: 'Ready Account (Pre-made)' },
+                ]}
+             />
+             <FormField
+                label={t('dashboard.form.name_label')}
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+              />
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <FormField
@@ -104,14 +129,45 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
             />
-            <FormField
-              label={t('dashboard.form.storage_label')}
-              type="number"
-              value={formData.storageUsed}
-              onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
-              placeholder="0"
-              max="2048"
-            />
+            {formData.productType === 'slot' && (
+              <FormField
+                label={t('dashboard.form.storage_label')}
+                type="number"
+                value={formData.storageUsed}
+                onChange={(e) => setFormData({ ...formData, storageUsed: e.target.value })}
+                placeholder="0"
+                max="2048"
+              />
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {formData.productType === 'slot' ? (
+              <>
+                <FormField
+                  label="Monthly Price (IDR)"
+                  type="number"
+                  value={formData.priceMonthly}
+                  onChange={(e) => setFormData({ ...formData, priceMonthly: e.target.value })}
+                  placeholder="25000"
+                />
+                <FormField
+                  label="Annual Price (IDR)"
+                  type="number"
+                  value={formData.priceAnnual}
+                  onChange={(e) => setFormData({ ...formData, priceAnnual: e.target.value })}
+                  placeholder="300000"
+                />
+              </>
+            ) : (
+                <FormField
+                  label="One-Time Price (IDR)"
+                  type="number"
+                  value={formData.priceSale}
+                  onChange={(e) => setFormData({ ...formData, priceSale: e.target.value })}
+                  placeholder="150000"
+                />
+            )}
           </div>
 
           <FormField
