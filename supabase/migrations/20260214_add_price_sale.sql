@@ -1,0 +1,2 @@
+ALTER TABLE families 
+ADD COLUMN price_sale INTEGER DEFAULT 0;

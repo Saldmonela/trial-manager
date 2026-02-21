@@ -1,0 +1,5 @@
+- 2026-02-14:  could not run because  is missing in PATH on this environment.
+- 2026-02-14: Correction - lsp_diagnostics cannot run here because typescript-language-server is missing from PATH.
+- 2026-02-14: Reconfirmed while verifying PublicFiltersBar - lsp_diagnostics remains unavailable in this environment due to missing typescript-language-server binary.
+- 2026-02-14: Reconfirmed while verifying FamilyCardPublic - lsp_diagnostics is still blocked because typescript-language-server is not installed in PATH.
+- 2026-02-14: Reconfirmed while integrating DashboardPublic - lsp_diagnostics still cannot start on this runner even after installing typescript-language-server globally and locally; PATH for LSP process is unresolved.

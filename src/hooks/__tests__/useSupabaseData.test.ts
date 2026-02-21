@@ -54,6 +54,15 @@ const MOCK_FAMILIES_RAW = [
     notes: 'Test notes',
     created_at: '2026-01-01',
     user_id: MOCK_USER_ID,
+    members: [
+      {
+        id: 'mem-1',
+        family_id: 'fam-1',
+        name: 'John',
+        email: 'john@test.com',
+        added_at: '2026-01-15',
+      },
+    ],
   },
 ];
 
@@ -82,13 +91,10 @@ describe('useSupabaseData', () => {
     };
     mockChannel.mockReturnValue(channelChain);
 
-    // Default: families and members queries succeed
+    // Default: families query (with embedded members via JOIN) succeeds
     mockFrom.mockImplementation((table: string) => {
       if (table === 'families') {
         return createChainableMock(MOCK_FAMILIES_RAW);
-      }
-      if (table === 'members') {
-        return createChainableMock(MOCK_MEMBERS_RAW);
       }
       return createChainableMock();
     });
@@ -117,7 +123,7 @@ describe('useSupabaseData', () => {
           insert: insertMock,
         };
       }
-      return createChainableMock(MOCK_MEMBERS_RAW);
+      return createChainableMock();
     });
 
     const { result } = renderHook(() => useSupabaseData());
@@ -153,8 +159,9 @@ describe('useSupabaseData', () => {
     });
     mockFrom.mockImplementation((table: string) => {
       if (table === 'families') {
+        const emptyFamilies = [{ ...MOCK_FAMILIES_RAW[0], members: [] }];
         return {
-          select: vi.fn().mockResolvedValue({ data: [], error: null }),
+          select: vi.fn().mockResolvedValue({ data: emptyFamilies, error: null }),
           insert: insertMock,
         };
       }
@@ -192,7 +199,7 @@ describe('useSupabaseData', () => {
           delete: deleteMock,
         };
       }
-      return createChainableMock(MOCK_MEMBERS_RAW);
+      return createChainableMock();
     });
 
     const { result } = renderHook(() => useSupabaseData());

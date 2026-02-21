@@ -32,27 +32,27 @@ describe('familyUtils', () => {
   });
 
   describe('getSlotsUsed', () => {
-    it('returns 1 for a family with no members', () => {
-      expect(getSlotsUsed({ members: [] })).toBe(1);
+    it('returns 0 for a family with no members', () => {
+      expect(getSlotsUsed({ members: [] })).toBe(0);
     });
 
-    it('returns 1 when members is undefined', () => {
-      expect(getSlotsUsed({})).toBe(1);
+    it('returns 0 when members is undefined', () => {
+      expect(getSlotsUsed({})).toBe(0);
     });
 
-    it('returns 1 + member count', () => {
+    it('returns member count', () => {
       const family = { members: [{ id: '1' }, { id: '2' }, { id: '3' }] };
-      expect(getSlotsUsed(family)).toBe(4);
+      expect(getSlotsUsed(family)).toBe(3);
     });
   });
 
   describe('getSlotsAvailable', () => {
-    it('returns max - used slots', () => {
-      expect(getSlotsAvailable({ members: [] })).toBe(MAX_FAMILY_SLOTS - 1);
+    it('returns max slots for empty family', () => {
+      expect(getSlotsAvailable({ members: [] })).toBe(MAX_FAMILY_SLOTS);
     });
 
     it('returns 0 when family is full', () => {
-      const members = Array.from({ length: MAX_FAMILY_SLOTS - 1 }, (_, i) => ({ id: String(i) }));
+      const members = Array.from({ length: MAX_FAMILY_SLOTS }, (_, i) => ({ id: String(i) }));
       expect(getSlotsAvailable({ members })).toBe(0);
     });
 
@@ -68,7 +68,7 @@ describe('familyUtils', () => {
     });
 
     it('returns true when at max slots', () => {
-      const members = Array.from({ length: MAX_FAMILY_SLOTS - 1 }, (_, i) => ({ id: String(i) }));
+      const members = Array.from({ length: MAX_FAMILY_SLOTS }, (_, i) => ({ id: String(i) }));
       expect(isFamilyFull({ members })).toBe(true);
     });
 
@@ -113,31 +113,31 @@ describe('familyUtils', () => {
     it('returns gray/no-expiry for null', () => {
       const status = getExpiryStatus(null);
       expect(status.color).toBe('gray');
-      expect(status.text).toContain('No expiry');
+      expect(status.text).toContain('No expiry set');
     });
 
     it('returns gray for expired (negative days)', () => {
       const status = getExpiryStatus(-5);
       expect(status.color).toBe('gray');
-      expect(status.text).toContain('Expired');
+      expect(status.text).toContain('EXPIRED');
     });
 
     it('returns red for critical (≤3 days)', () => {
       const status = getExpiryStatus(2);
       expect(status.color).toBe('red');
-      expect(status.text).toContain('2 days left');
+      expect(status.text).toContain('2 DAYS LEFT');
     });
 
     it('returns yellow for warning (3-7 days)', () => {
       const status = getExpiryStatus(5);
       expect(status.color).toBe('yellow');
-      expect(status.text).toContain('5 days left');
+      expect(status.text).toContain('5 DAYS LEFT');
     });
 
     it('returns green for healthy (>7 days)', () => {
       const status = getExpiryStatus(15);
       expect(status.color).toBe('green');
-      expect(status.text).toContain('15 days left');
+      expect(status.text).toContain('15 DAYS LEFT');
     });
   });
 });

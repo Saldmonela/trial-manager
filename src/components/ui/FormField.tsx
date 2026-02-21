@@ -4,14 +4,15 @@ import { cn } from '../../utils';
 
 interface FormFieldProps {
   label?: string;
-  type?: 'text' | 'email' | 'number' | 'date' | 'password';
-  value: string;
-  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  type?: 'text' | 'email' | 'password' | 'date' | 'number' | 'select'; // Add select to type union
+  value: string | number;
+  onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => void;
   placeholder?: string;
   required?: boolean;
-  max?: string;
-  /** Optional suffix element, e.g. show/hide password button */
   suffix?: React.ReactNode;
+  options?: { value: string; label: string }[];
+  className?: string;
+  max?: string | number; // Add max to props
 }
 
 export default function FormField({
@@ -20,11 +21,21 @@ export default function FormField({
   value,
   onChange,
   placeholder,
-  required,
+  required = false,
   max,
   suffix,
+  options,
+  className,
 }: FormFieldProps) {
   const { theme } = useTheme();
+
+  // Create a handler that works for both input and select
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    // We cast to any here because the parent component expects a specific event type 
+    // but we're making this component more generic. In a standardized system we'd fix the parent types.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    onChange(e as any);
+  };
 
   return (
     <div className={suffix ? "relative" : undefined}>
@@ -37,21 +48,42 @@ export default function FormField({
         </label>
       )}
       <div className={suffix ? "relative" : undefined}>
-        <input
-          type={type}
-          value={value}
-          onChange={onChange}
-          placeholder={placeholder}
-          required={required}
-          max={max}
-          className={cn(
-            "w-full px-4 py-4 border-b-2 bg-transparent focus:outline-none transition-colors",
-            suffix && "pr-10",
-            theme === 'light'
-              ? "border-stone-200 text-stone-900 placeholder-stone-300 focus:border-stone-900"
-              : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
-          )}
-        />
+        {type === 'select' ? (
+          <select
+            value={value}
+            onChange={handleChange}
+            className={cn(
+              "w-full px-4 py-3 border bg-transparent focus:outline-none transition-colors appearance-none",
+              theme === 'light'
+                ? "border-stone-200 text-stone-900 focus:border-stone-900"
+                : "border-stone-700 text-stone-50 focus:border-stone-50",
+              className
+            )}
+            required={required}
+          >
+            {options?.map((opt) => (
+              <option key={opt.value} value={opt.value} className="text-black">
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type={type}
+            value={value}
+            onChange={handleChange}
+            placeholder={placeholder}
+            required={required}
+            max={max}
+            className={cn(
+              "w-full px-4 py-3 border bg-transparent focus:outline-none transition-colors",
+              theme === 'light'
+                ? "border-stone-200 text-stone-900 placeholder-stone-400 focus:border-stone-900"
+                : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50",
+              className
+            )}
+          />
+        )}
         {suffix}
       </div>
     </div>
