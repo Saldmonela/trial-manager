@@ -40,6 +40,7 @@ interface PublicFamilyRow {
   currency?: string;
   product_type?: 'slot' | 'account_ready' | 'account_custom';
   sold_at?: string | null;
+  is_banned?: boolean;
 }
 
 interface PublicMemberRow {
@@ -99,7 +100,7 @@ export async function fetchPublicFamilies(): Promise<PublicFamily[]> {
 
   const { data: rawFamilies, error: familiesError } = await client
     .from('families')
-    .select('id,name,expiry_date,storage_used,price_monthly,price_annual,price_sale,currency,product_type,created_at,sold_at');
+    .select('id,name,expiry_date,storage_used,price_monthly,price_annual,price_sale,currency,product_type,created_at,sold_at,is_banned');
 
   if (familiesError) throw familiesError;
 
@@ -128,8 +129,11 @@ export async function fetchPublicFamilies(): Promise<PublicFamily[]> {
 
   const families = (rawFamilies || []) as PublicFamilyRow[];
 
+  // Filter out banned accounts
+  const validFamilies = families.filter(f => !f.is_banned);
+
   // No longer filter out sold ready accounts — show them with SOLD status
-  return families.map((family) => {
+  return validFamilies.map((family) => {
     const { familyName, serviceName } = parsePublicFamilyName(family.name);
     const slotsUsed = memberCountByFamily[family.id] || 0;
 
@@ -472,6 +476,7 @@ export function useSupabaseData(): UseSupabaseDataReturn {
             priceSale: family.price_sale,
             currency: family.currency,
             productType: family.product_type || 'slot',
+            isBanned: family.is_banned,
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             members: (family.members || []).map((m: any) => ({
               ...m,
@@ -520,6 +525,7 @@ export function useSupabaseData(): UseSupabaseDataReturn {
           price_sale: Number(family.priceSale) || 0,
           currency: family.currency || 'IDR',
           product_type: family.productType || 'slot',
+          is_banned: Boolean(family.isBanned),
         }]);
 
       if (error) throw error;
@@ -567,6 +573,7 @@ export function useSupabaseData(): UseSupabaseDataReturn {
           price_sale: Number(updatedFamily.priceSale) || 0,
           currency: updatedFamily.currency || 'IDR',
           product_type: updatedFamily.productType || 'slot',
+          is_banned: Boolean(updatedFamily.isBanned),
         })
         .eq('id', id);
       if (error) throw error;

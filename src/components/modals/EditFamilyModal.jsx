@@ -21,6 +21,7 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
     priceAnnual: family?.priceAnnual || '',
     priceSale: family?.priceSale || '',
     productType: family?.productType || 'slot',
+    isBanned: family?.isBanned || false,
   });
 
   const formatDateForInput = (dateString) => {
@@ -47,6 +48,7 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
         priceAnnual: family.priceAnnual || '',
         priceSale: family.priceSale || '',
         productType: family.productType || 'slot',
+        isBanned: family.isBanned || false,
       });
     }
   }, [family]);
@@ -64,6 +66,7 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
       priceSale: Number(formData.priceSale) || 0,
       currency: 'IDR',
       productType: formData.productType,
+      isBanned: formData.isBanned,
     });
     
     onClose();
@@ -91,6 +94,19 @@ export default function EditFamilyModal({ isOpen, onClose, onSave, family }) {
                 value={formData.name}
                 onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               />
+          </div>
+
+          <div className="flex items-center gap-3 p-4 border rounded-sm bg-red-50/50 dark:bg-red-950/20 border-red-200 dark:border-red-900/30">
+            <input
+              type="checkbox"
+              id="isBanned"
+              checked={formData.isBanned}
+              onChange={(e) => setFormData({ ...formData, isBanned: e.target.checked })}
+              className="w-4 h-4 text-red-600 rounded border-red-300 focus:ring-red-500 cursor-pointer"
+            />
+            <label htmlFor="isBanned" className="text-sm font-bold uppercase tracking-widest text-red-700 dark:text-red-400 cursor-pointer select-none">
+              Mark as Banned
+            </label>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

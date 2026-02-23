@@ -102,21 +102,39 @@ export default function DashboardPublic({ session, onLogout }) {
 
   // Fetch global settings
   const { value: upgradePriceSettings } = useAppSetting('upgrade_service_price', 45000);
+  const { value: serviceTitle } = useAppSetting('upgrade_service_title', 'Google AI Pro');
+  const { value: serviceDesc } = useAppSetting('upgrade_service_desc', 'Upgrade your personal account to premium status. Enjoy all benefits without joining a family group.');
+  const { value: serviceFeaturesRaw } = useAppSetting('upgrade_service_features', JSON.stringify(['Private Account', 'Full Warranty', 'Instant Activation']));
+  const { value: paymentType } = useAppSetting('upgrade_payment_type', 'One-Time Payment');
+  const { value: validity } = useAppSetting('upgrade_validity', 'Lifetime Validity');
 
   // Static Upgrade Service (not tied to any family in DB)
-  const upgradeService = useMemo(() => ({
-    id: 'upgrade-service',
-    familyName: 'Premium Upgrade',
-    serviceName: 'Premium Upgrade',
-    name: 'Premium Upgrade',
-    notes: 'Google AI Pro',
-    productType: 'account_custom',
-    priceSale: upgradePriceSettings,
-    currency: 'IDR',
-    expiryDate: null,
-    storageUsed: 0,
-    slotsAvailable: 99, // unlimited
-  }), [upgradePriceSettings]);
+  const upgradeService = useMemo(() => {
+    let features = [];
+    try {
+      features = typeof serviceFeaturesRaw === 'string' ? JSON.parse(serviceFeaturesRaw) : serviceFeaturesRaw;
+    } catch(e) {
+      features = ['Private Account', 'Full Warranty', 'Instant Activation'];
+    }
+
+    return {
+      id: 'upgrade-service',
+      familyName: 'Premium Upgrade',
+      serviceName: 'Premium Upgrade',
+      name: 'Premium Upgrade',
+      notes: serviceTitle,
+      description: serviceDesc,
+      features: features,
+      paymentType: paymentType,
+      validity: validity,
+      productType: 'account_custom',
+      priceSale: upgradePriceSettings,
+      currency: 'IDR',
+      expiryDate: null,
+      storageUsed: 0,
+      slotsAvailable: 99, // unlimited
+    };
+  }, [upgradePriceSettings, serviceTitle, serviceDesc, serviceFeaturesRaw, paymentType, validity]);
 
   const services = useMemo(() => [upgradeService], [upgradeService]);
   const standardFamilies = sortedFamilies; // all DB families are standard now
