@@ -175,11 +175,11 @@ export const translations = {
       },
     },
     landing: {
-      hero_title: "Orchestrate Your",
-      hero_subtitle: "Digital Empire",
-      hero_desc: "The ultimate dashboard for managing multiple Google AI Family plans. Monitor slots, track renewals, and organize your premium digital assets with unparalleled elegance.",
-      hero_tag: "The Future of Family Management",
-      cta_get_started: "Get Started Now",
+      hero_title: "Discover Premium",
+      hero_subtitle: "Digital Assets",
+      hero_desc: "The premier destination for upgrading your digital life. Browse exclusive Google AI Premium accounts, from solo upgrades to cost-effective shared family plans.",
+      hero_tag: "Elevate Your Digital Experience",
+      cta_get_started: "Explore Catalog",
       cta_primary: "Access Dashboard",
       cta_secondary: "View Documentation",
       features: {
@@ -189,16 +189,16 @@ export const translations = {
           desc: "Manage 100+ Google Family accounts from a single glass-morphic interface.",
         },
         smart_monitoring: {
-          title: "Smart Monitoring",
-          desc: "Real-time alerts for available slots, storage limits, and subscription renewals.",
+          title: "Instant Fulfillment",
+          desc: "Get immediate access to your premium accounts. No waiting, no hassle, just instant digital upgrades upon purchase.",
         },
         secure_vault: {
-          title: "Secure Vault",
-          desc: "Enterprise-grade encryption for all your credentials and member data.",
+          title: "Verified Accounts",
+          desc: "Every account is hand-verified and comes with a full warranty. Enjoy your premium experience with complete peace of mind.",
         },
         premium_ui: {
-          title: "Premium UI",
-          desc: "Editorial design experience that feels more like a luxury magazine than a tool.",
+          title: "Luxury Experience",
+          desc: "Browse our curated collection in an editorial design environment that feels like a premium boutique.",
         }
       }
     }
@@ -378,11 +378,11 @@ export const translations = {
       },
     },
     landing: {
-      hero_title: "Orkestrasi",
-      hero_subtitle: "Kekaisaran Digital",
-      hero_desc: "Dasbor pamungkas untuk mengelola banyak Google AI Family Plan. Pantau slot, lacak perpanjangan, dan atur aset digital premium Anda dengan keanggunan tak tertandingi.",
-      hero_tag: "Masa Depan Manajemen Keluarga",
-      cta_get_started: "Mulai Sekarang",
+      hero_title: "Temukan Layanan",
+      hero_subtitle: "Digital Premium",
+      hero_desc: "Destinasi utama untuk meningkatkan kehidupan digital Anda. Temukan layanan Google AI Premium eksklusif, mulai dari upgrade personal hingga paket keluarga yang hemat.",
+      hero_tag: "Tingkatkan Pengalaman Digital Anda",
+      cta_get_started: "Lihat Katalog",
       cta_primary: "Akses Dasbor",
       cta_secondary: "Lihat Dokumentasi",
       features: {
@@ -392,16 +392,16 @@ export const translations = {
           desc: "Kelola 100+ akun Keluarga Google dari satu antarmuka glass-morphic.",
         },
         smart_monitoring: {
-          title: "Pemantauan Cerdas",
-          desc: "Peringatan real-time untuk ketersediaan slot, batas penyimpanan, dan perpanjangan langganan.",
+          title: "Akses Instan",
+          desc: "Dapatkan akses langsung ke akun premium Anda setelah pembelian. Tanpa repot, tanpa menunggu lama.",
         },
         secure_vault: {
-          title: "Brankas Aman",
-          desc: "Enkripsi tingkat perusahaan untuk semua kredensial dan data anggota Anda.",
+          title: "Akun Terverifikasi",
+          desc: "Setiap akun telah diverifikasi dan dilengkapi garansi penuh. Nikmati pengalaman premium dengan tenang tanpa rasa khawatir.",
         },
         premium_ui: {
-          title: "UI Premium",
-          desc: "Pengalaman desain editorial yang terasa lebih seperti majalah mewah daripada sekadar alat.",
+          title: "Pengalaman Mewah",
+          desc: "Jelajahi koleksi pilihan kami dalam balutan desain editorial yang memberikan nuansa butik premium.",
         }
       }
     }

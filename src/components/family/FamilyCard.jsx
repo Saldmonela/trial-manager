@@ -159,9 +159,11 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
           ? "opacity-50 border-red-500/50 hover:border-red-500"
           : readOnly && family.hasPendingOrder
             ? "opacity-[0.7] border-amber-500/50 hover:border-amber-500"
-            : theme === 'light'
-              ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
-              : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
+            : !readOnly && family.isBanned
+              ? "border-red-600 shadow-[4px_4px_0px_0px_rgba(220,38,38,0.3)] bg-red-50 dark:bg-red-950/30 dark:border-red-700"
+              : theme === 'light'
+                ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
+                : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
       )}
     >
       {/* Right-side stacked column: Expiry → Order → Edit/Delete */}
@@ -211,12 +213,19 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
         )}
       </div>
 
-      {/* SOLD Badge (Admin + Public, Ready Account) */}
-      {((!readOnly && family.sold_at) || (readOnly && family.soldAt)) && (
-        <div className="absolute top-0 left-0 z-20 bg-red-600 text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-md">
-          SOLD
-        </div>
-      )}
+      {/* SOLD & BANNED Badges (Admin + Public) */}
+      <div className="absolute top-0 left-0 z-20 flex flex-col items-start gap-px p-0">
+        {!readOnly && family.isBanned && (
+          <div className="bg-red-700 text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-md">
+            BANNED
+          </div>
+        )}
+        {((!readOnly && family.sold_at) || (readOnly && family.soldAt)) && (
+          <div className="bg-stone-800 text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-md">
+            SOLD
+          </div>
+        )}
+      </div>
       {/* Editorial Header Block */}
       <div className={cn(
         "p-6 border-b transition-colors",
@@ -571,10 +580,10 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
             <button
               onClick={() => onRequest?.(family)}
               className={cn(
-                "w-full flex items-center justify-center gap-2 py-3 border-t transition-colors text-sm font-bold uppercase tracking-widest mt-auto",
+                "w-full flex items-center justify-center gap-2 py-3 mt-auto transition-colors text-sm font-bold uppercase tracking-widest border border-stone-200 dark:border-stone-700",
                 theme === 'light'
-                  ? "border-stone-200 text-stone-900 hover:bg-stone-900 hover:text-stone-50"
-                  : "border-stone-800 text-stone-50 hover:bg-stone-50 hover:text-stone-900"
+                  ? "bg-white text-stone-900 border-stone-200 hover:bg-stone-900 hover:text-white"
+                  : "bg-stone-100 text-stone-900 hover:bg-white hover:text-stone-900"
               )}
             >
               <Plus className="w-4 h-4" />

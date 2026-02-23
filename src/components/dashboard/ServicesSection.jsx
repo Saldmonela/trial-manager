@@ -7,6 +7,7 @@ export default function ServicesSection({
   services,
   theme,
   style = 'editorial',
+  isAdmin = false,
   onToggleStyle,
   onRequest,
 }) {
@@ -48,6 +49,7 @@ export default function ServicesSection({
             family={service}
             theme={theme}
             variant={style}
+            isAdmin={isAdmin}
             onRequest={onRequest}
           />
         ))}

@@ -24,6 +24,7 @@ const OrderManagementModal = lazy(() => import('./modals/OrderManagementModal'))
 const MigrationTool = lazy(() => import('./MigrationTool'));
 const TutorialModal = lazy(() => import('./TutorialModal'));
 const SettingsModal = lazy(() => import('./modals/SettingsModal'));
+const EditServiceModal = lazy(() => import('./modals/EditServiceModal'));
 import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
@@ -71,9 +72,18 @@ export default function Dashboard({ onLogout }) {
   const [showMigration, setShowMigration] = useState(false);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isEditServiceOpen, setIsEditServiceOpen] = useState(false);
   
   // Design Setting
   const { value: serviceStyle, setValue: setServiceStyle } = useAppSetting('service_card_style', 'editorial');
+
+  // Service Content Settings
+  const { value: upgradePriceSettings } = useAppSetting('upgrade_service_price', 45000);
+  const { value: serviceTitle } = useAppSetting('upgrade_service_title', 'Google AI Pro');
+  const { value: serviceDesc } = useAppSetting('upgrade_service_desc', 'Upgrade your personal account to premium status. Enjoy all benefits without joining a family group.');
+  const { value: serviceFeaturesRaw } = useAppSetting('upgrade_service_features', JSON.stringify(['Private Account', 'Full Warranty', 'Instant Activation']));
+  const { value: paymentType } = useAppSetting('upgrade_payment_type', 'One-Time Payment');
+  const { value: validity } = useAppSetting('upgrade_validity', 'Lifetime Validity');
 
   const sortOptions = [
     { key: 'created', label: 'ADDED: OLDEST', labelAlt: 'ADDED: NEWEST' },
@@ -240,19 +250,46 @@ export default function Dashboard({ onLogout }) {
     });
   }, [families, filter, sortBy, sortDirection]);
 
-  const stats = useMemo(
-    () => ({
-      total: families.length,
-      full: families.filter((f) => isFamilyFull(f)).length,
-      availableSlots: families.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
-      totalMembers: families.reduce((acc, f) => acc + (f.members?.length || 0), 0),
-    }),
-
-    [families]
-  );
+  const stats = useMemo(() => {
+    const activeFamilies = families.filter(f => !f.isBanned);
+    return {
+      total: activeFamilies.length,
+      full: activeFamilies.filter((f) => isFamilyFull(f)).length,
+      availableSlots: activeFamilies.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
+      totalMembers: activeFamilies.reduce((acc, f) => acc + (f.members?.length || 0), 0),
+      activeCount: activeFamilies.length, // Add this to pass to MetricsRow
+    };
+  }, [families]);
   
-  // No more services section in admin (upgrade is standalone in public)
-  const services = [];
+  // Construct the service object from settings
+  const upgradeService = useMemo(() => {
+    let features = [];
+    try {
+      features = typeof serviceFeaturesRaw === 'string' ? JSON.parse(serviceFeaturesRaw) : serviceFeaturesRaw;
+    } catch(e) {
+      features = ['Private Account', 'Full Warranty', 'Instant Activation'];
+    }
+
+    return {
+      id: 'upgrade-service',
+      familyName: 'Premium Upgrade',
+      serviceName: 'Premium Upgrade',
+      name: 'Premium Upgrade', // Not strictly needed but kept for compatibility
+      notes: serviceTitle, // Displayed as title
+      description: serviceDesc, // We will use this in ServiceCard
+      features: features, // We will use this in ServiceCard
+      paymentType: paymentType,
+      validity: validity,
+      productType: 'account_custom',
+      priceSale: upgradePriceSettings,
+      currency: 'IDR',
+      expiryDate: null,
+      storageUsed: 0,
+      slotsAvailable: 99, // unlimited
+    };
+  }, [upgradePriceSettings, serviceTitle, serviceDesc, serviceFeaturesRaw, paymentType, validity]);
+
+  const services = useMemo(() => [upgradeService], [upgradeService]);
 
   const expiringSoonCount = useMemo(() => {
     return families.filter((f) => {
@@ -430,7 +467,7 @@ export default function Dashboard({ onLogout }) {
           theme={theme}
           t={t}
           stats={stats}
-          familiesCount={families.length}
+          familiesCount={stats.activeCount} // Pass filtered count instead of raw families.length
           expiringSoonCount={expiringSoonCount}
           onExpiringSoonClick={() => {
             setFilter('all');
@@ -456,6 +493,7 @@ export default function Dashboard({ onLogout }) {
           services={services}
           theme={theme}
           style={serviceStyle}
+          isAdmin={true}
           onToggleStyle={async () => {
              const prevStyle = serviceStyle;
              const newStyle = serviceStyle === 'editorial' ? 'modern' : 'editorial';
@@ -465,8 +503,7 @@ export default function Dashboard({ onLogout }) {
                setServiceStyle(prevStyle); // Rollback on failure
              }
           }}
-          onRequest={() => {}} // No action needed for admin on click? or open edit?
-          // Maybe open edit modal?
+          onRequest={() => setIsEditServiceOpen(true)}
         />
 
         <FamiliesGrid
@@ -521,6 +558,11 @@ export default function Dashboard({ onLogout }) {
           onShowTutorial={() => setShowTutorial(true)}
           onLogout={onLogout}
           session={supabase ? session : null}
+        />
+        
+        <EditServiceModal 
+          isOpen={isEditServiceOpen} 
+          onClose={() => setIsEditServiceOpen(false)} 
         />
 
         <EditFamilyModal isOpen={!!editFamily} onClose={() => setEditFamily(null)} onSave={handleEditFamily} family={editFamily} />

@@ -30,6 +30,8 @@ export interface Family {
   priceSale?: number;    // Alias for camelCase usage
   currency?: string;
   productType?: ProductType;
+  is_banned?: boolean;
+  isBanned?: boolean;
   members?: Member[]; // Optional members array from join
 }
 
@@ -49,6 +51,8 @@ export interface FamilyInput {
   priceSale?: number;
   currency?: string;
   productType?: ProductType;
+  is_banned?: boolean;
+  isBanned?: boolean;
 }
 
 /** Result of an async CRUD action. */
@@ -103,6 +107,8 @@ export interface PublicFamily {
   productType?: ProductType;
   soldAt?: string | null;
   hasPendingOrder?: boolean;
+  is_banned?: boolean;
+  isBanned?: boolean;
 }
 
 export interface UsePublicFamiliesReturn {

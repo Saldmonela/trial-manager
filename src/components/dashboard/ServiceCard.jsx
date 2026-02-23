@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { Crown, Check, ArrowRight, Star, Sparkles } from 'lucide-react';
+import { Crown, Check, ArrowRight, Star, Sparkles, Pencil } from 'lucide-react';
 import { cn } from '../../utils';
 import { formatCurrency } from '../../utils';
 
@@ -8,6 +8,7 @@ export default function ServiceCard({
   family,
   theme,
   variant = 'editorial', // 'editorial' | 'modern'
+  isAdmin = false,
   onRequest,
 }) {
   const isDark = theme === 'dark';
@@ -20,16 +21,28 @@ export default function ServiceCard({
         animate={{ opacity: 1, y: 0 }}
         layout
         className={cn(
-          "relative overflow-hidden rounded-2xl border-2 transition-all duration-300 group",
-          isDark 
-            ? "bg-gradient-to-br from-stone-900 to-stone-950 border-stone-800 hover:border-yellow-600/50" 
-            : "bg-white border-stone-100 hover:border-yellow-400/50 shadow-lg hover:shadow-xl"
+          "relative overflow-hidden rounded-2xl p-[2px] transition-all duration-300 group",
+          isDark ? "shadow-lg" : "shadow-lg hover:shadow-xl"
         )}
       >
-        {/* Background Decor */}
-        <div className="absolute top-0 right-0 p-32 bg-yellow-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+        {/* Static Border Fallback */}
+        <div className={cn(
+          "absolute inset-0 z-0 transition-colors duration-300",
+          isDark ? "bg-stone-800" : "bg-stone-200"
+        )} />
         
-        <div className="relative p-6 md:p-8 flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-center justify-between">
+        {/* Animated Glowing Border */}
+        <div className="absolute top-1/2 left-1/2 w-[200%] h-[300%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(transparent_0deg,transparent_200deg,#eab308_360deg)] animate-[spin_4s_linear_infinite] opacity-40 group-hover:opacity-100 transition-opacity duration-500 z-0 pointer-events-none" />
+
+        {/* Inner Content Card */}
+        <div className={cn(
+          "relative z-10 w-full h-full rounded-[14px] overflow-hidden flex flex-col md:flex-row gap-6 md:gap-8 items-start md:items-center justify-between p-6 md:p-8",
+          isDark 
+            ? "bg-gradient-to-br from-stone-900 to-stone-950" 
+            : "bg-white"
+        )}>
+          {/* Background Decor */}
+          <div className="absolute top-0 right-0 p-32 bg-yellow-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
           
           {/* Left Side: Info */}
           <div className="flex-1 space-y-4">
@@ -59,12 +72,12 @@ export default function ServiceCard({
                 "text-sm md:text-base max-w-lg leading-relaxed",
                 isDark ? "text-stone-400" : "text-stone-600"
               )}>
-                Upgrade your own personal account to premium. No need to join a family group or switch accounts.
+                {family.description || "Upgrade your personal account to premium status. Enjoy all benefits without joining a family group."}
               </p>
             </div>
   
             <div className="flex flex-wrap gap-4 mt-4">
-               {['Private Account', 'Full Warranty', 'Instant Activation'].map((feature, idx) => (
+               {(family.features || ['Private Account', 'Full Warranty', 'Instant Activation']).map((feature, idx) => (
                   <div key={idx} className="flex items-center gap-2">
                      <div className={cn(
                        "w-1.5 h-1.5 rounded-full",
@@ -88,7 +101,7 @@ export default function ServiceCard({
                       "text-xs uppercase tracking-widest font-bold mb-1",
                       isDark ? "text-stone-500" : "text-stone-400"
                   )}>
-                      One-Time Payment
+                      {family.paymentType || "One-Time Payment"}
                   </p>
                   <div className="flex items-baseline gap-1 md:justify-end">
                       <span className={cn(
@@ -106,7 +119,7 @@ export default function ServiceCard({
                       "text-xs mt-2",
                        isDark ? "text-stone-500" : "text-stone-400"
                   )}>
-                      Lifetime validity • No recurring fees
+                      {family.validity || "Lifetime validity • No recurring fees"}
                   </p>
               </div>
   
@@ -120,12 +133,16 @@ export default function ServiceCard({
                   )}
               >
                   <span className="relative z-10 flex items-center justify-center gap-2">
-                      Upgrade Now
-                      <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                      {isAdmin ? 'Edit Configuration' : 'Upgrade Now'}
+                      {isAdmin 
+                         ? <Pencil size={16} className="group-hover:translate-x-1 transition-transform" />
+                         : <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
+                      }
                   </span>
               </button>
           </div>
-  
+
+
         </div>
       </motion.div>
     );
@@ -138,12 +155,28 @@ export default function ServiceCard({
       animate={{ opacity: 1, y: 0 }}
       layout
       className={cn(
-        "relative group transition-all duration-300 flex flex-col md:flex-row border",
+        "relative overflow-hidden transition-all duration-300 group p-[2px]",
         isDark 
-          ? "bg-stone-900 border-stone-800 shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)] hover:shadow-[4px_4px_0px_0px_rgba(234,179,8,0.4)] hover:border-yellow-500" 
-          : "bg-white border-stone-200 shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)] hover:shadow-[4px_4px_0px_0px_rgba(234,179,8,1)] hover:border-yellow-500"
+          ? "shadow-[4px_4px_0px_0px_rgba(255,255,255,0.05)] hover:shadow-[4px_4px_0px_0px_rgba(234,179,8,0.4)]" 
+          : "shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)] hover:shadow-[4px_4px_0px_0px_rgba(234,179,8,1)]"
       )}
     >
+      {/* Static Border Fallback */}
+      <div className={cn(
+        "absolute inset-0 z-0 transition-colors duration-300",
+        isDark ? "bg-stone-800 group-hover:bg-yellow-500" : "bg-stone-200 group-hover:bg-yellow-500"
+      )} />
+
+      {/* Animated Glowing Border */}
+      <div className="absolute top-1/2 left-1/2 w-[200%] h-[300%] -translate-x-1/2 -translate-y-1/2 bg-[conic-gradient(transparent_0deg,transparent_200deg,#eab308_360deg)] animate-[spin_4s_linear_infinite] opacity-40 group-hover:opacity-100 transition-opacity duration-500 z-0 pointer-events-none" />
+
+      {/* Inner Content Card */}
+      <div className={cn(
+        "relative z-10 w-full h-full flex flex-col md:flex-row",
+        isDark 
+          ? "bg-stone-900" 
+          : "bg-white"
+      )}>
       {/* Decorative Label */}
       <div className={cn(
         "absolute top-0 right-0 px-4 py-1.5 text-[10px] font-bold uppercase tracking-widest z-10",
@@ -176,11 +209,11 @@ export default function ServiceCard({
              "text-sm leading-relaxed max-w-md font-serif italic",
              isDark ? "text-stone-400" : "text-stone-500"
            )}>
-             "Upgrade your personal account to premium status. Enjoy all benefits without joining a family group."
+             "{family.description || "Upgrade your personal account to premium status. Enjoy all benefits without joining a family group."}"
            </p>
            
            <div className="flex flex-wrap justify-center md:justify-start gap-x-6 gap-y-2 pt-2">
-              {['Private Account', 'Full Warranty', 'Instant Activation'].map((feature, i) => (
+              {(family.features || ['Private Account', 'Full Warranty', 'Instant Activation']).map((feature, i) => (
                  <div key={i} className="flex items-center gap-2">
                     <Check className={cn("w-3 h-3", isDark ? "text-yellow-500" : "text-stone-900")} />
                     <span className={cn(
@@ -201,14 +234,14 @@ export default function ServiceCard({
          isDark ? "bg-stone-900/50" : "bg-stone-50/50"
       )}>
          <div className="text-center md:text-right space-y-1">
-             <p className={cn("text-[10px] uppercase tracking-widest font-bold", isDark ? "text-stone-500" : "text-stone-400")}>One-Time Payment</p>
+             <p className={cn("text-[10px] uppercase tracking-widest font-bold", isDark ? "text-stone-500" : "text-stone-400")}>{family.paymentType || "One-Time Payment"}</p>
              <div className="flex items-baseline gap-1 justify-center md:justify-end">
                 <span className={cn("text-sm font-serif", isDark ? "text-stone-400" : "text-stone-500")}>Rp</span>
                 <span className={cn("text-4xl font-serif font-bold", isDark ? "text-white" : "text-stone-900")}>
                     {formatCurrency(family.priceSale || 0).replace('Rp', '')}
                 </span>
              </div>
-             <p className={cn("text-[10px] font-mono", isDark ? "text-stone-600" : "text-stone-400")}>Lifetime Validity</p>
+             <p className={cn("text-[10px] font-mono", isDark ? "text-stone-600" : "text-stone-400")}>{family.validity || "Lifetime Validity"}</p>
          </div>
 
          <button
@@ -221,12 +254,16 @@ export default function ServiceCard({
             )}
         >
             <span className="relative z-10 flex items-center justify-center gap-3">
-                Upgrade Now
-                <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                {isAdmin ? 'Edit Configuration' : 'Upgrade Now'}
+                {isAdmin 
+                    ? <Pencil size={14} className="group-hover:translate-x-1 transition-transform" />
+                    : <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                }
             </span>
         </button>
       </div>
 
+      </div>
     </motion.div>
   );
 }

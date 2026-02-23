@@ -4,10 +4,10 @@ import { translations } from '../constants/translations';
 const LanguageContext = createContext();
 
 export function LanguageProvider({ children }) {
-  // Default to English, or load from localStorage
+  // Default to Indonesian, or load from localStorage
   const [language, setLanguage] = useState(() => {
     const saved = localStorage.getItem('fm_language');
-    return saved || 'en';
+    return saved || 'id';
   });
 
   useEffect(() => {
