@@ -14,41 +14,63 @@ export default function FiltersBar({
   setFilter,
   setMobileSortOpen,
   onSortClick,
+  showBanned,
+  onToggleBanned,
 }) {
   return (
     <div
       className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-4 border-b border-dashed"
       style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}
     >
-      <div className="flex gap-6">
-        {[
-          { key: 'available', label: t('dashboard.filters.available') },
-          { key: 'full', label: t('dashboard.filters.full') },
-          { key: 'all', label: t('dashboard.filters.all') },
-        ].map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={cn(
-              'text-sm font-medium transition-all duration-300 relative py-2',
-              filter === f.key
-                ? theme === 'light'
-                  ? 'text-stone-900'
-                  : 'text-stone-50'
-                : theme === 'light'
-                  ? 'text-stone-400 hover:text-stone-600'
-                  : 'text-stone-600 hover:text-stone-400'
-            )}
-          >
-            {f.label}
-            {filter === f.key && (
-              <motion.div
-                layoutId="activeFilter"
-                className={cn('absolute bottom-0 left-0 right-0 h-0.5', theme === 'light' ? 'bg-stone-900' : 'bg-gold-500')}
-              />
-            )}
-          </button>
-        ))}
+      <div className="flex flex-wrap items-center gap-6">
+        <div className="flex gap-6">
+          {[
+            { key: 'available', label: t('dashboard.filters.available') },
+            { key: 'full', label: t('dashboard.filters.full') },
+            { key: 'all', label: t('dashboard.filters.all') },
+          ].map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setFilter(f.key)}
+              className={cn(
+                'text-sm font-medium transition-all duration-300 relative py-2',
+                filter === f.key
+                  ? theme === 'light'
+                    ? 'text-stone-900'
+                    : 'text-stone-50'
+                  : theme === 'light'
+                    ? 'text-stone-400 hover:text-stone-600'
+                    : 'text-stone-600 hover:text-stone-400'
+              )}
+            >
+              {f.label}
+              {filter === f.key && (
+                <motion.div
+                  layoutId="activeFilter"
+                  className={cn('absolute bottom-0 left-0 right-0 h-0.5', theme === 'light' ? 'bg-stone-900' : 'bg-gold-500')}
+                />
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className={cn("h-4 w-px hidden sm:block", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+
+        <button
+          onClick={() => onToggleBanned?.()}
+          className={cn(
+            "text-[10px] sm:text-xs uppercase tracking-wider font-semibold py-1.5 px-3 border transition-all duration-300",
+            showBanned
+              ? theme === 'light'
+                ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/80"
+                : "border-red-900/50 bg-red-950/20 text-red-400 hover:bg-red-900/40"
+              : theme === 'light'
+                ? "border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 bg-white"
+                : "border-stone-800 text-stone-600 hover:text-stone-400 hover:border-stone-700 bg-stone-900/30"
+          )}
+        >
+          {showBanned ? t('dashboard.filters.hide_banned') : t('dashboard.filters.show_banned')}
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 md:gap-4">

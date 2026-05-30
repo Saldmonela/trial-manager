@@ -48,6 +48,8 @@ export const translations = {
         all: "All Families",
         available: "Space Available",
         full: "Fully Booked",
+        show_banned: "Show Banned",
+        hide_banned: "Hide Banned",
       },
       sort: {
         label: "Sort By:",
@@ -99,6 +101,10 @@ export const translations = {
         description: "This action cannot be undone. All member data within this family will be lost forever.",
         confirm: "Yes, Delete It",
         cancel: "Cancel",
+        confirm_member: "Are you sure you want to delete this member?",
+        member_title: "Delete Member?",
+        member_description: "This member will be removed from the family. This action cannot be undone.",
+        confirm_delete_member: "Yes, Delete Member",
       },
       form: {
         title_new: "New Family Plan",
@@ -115,6 +121,7 @@ export const translations = {
         save: "Save Changes",
         create: "Create Family",
         add_member_title: "Add New Member",
+        edit_member_title: "Edit Member",
         fill_required: "Please fill in all required fields",
       }
     },
@@ -251,6 +258,8 @@ export const translations = {
         all: "Semua Keluarga",
         available: "Sharing Tersedia",
         full: "Penuh",
+        show_banned: "Tampilkan Banned",
+        hide_banned: "Sembunyikan Banned",
       },
       sort: {
         label: "Urutkan:",
@@ -302,6 +311,10 @@ export const translations = {
         description: "Tindakan ini tidak dapat dibatalkan. Semua data anggota dalam keluarga ini akan hilang selamanya.",
         confirm: "Ya, Hapus",
         cancel: "Batal",
+        confirm_member: "Hapus anggota ini?",
+        member_title: "Hapus Anggota?",
+        member_description: "Anggota ini akan dihapus dari family. Tindakan ini tidak bisa dibatalkan.",
+        confirm_delete_member: "Ya, Hapus Anggota",
       },
       form: {
         title_new: "Plan Keluarga Baru",
@@ -318,6 +331,7 @@ export const translations = {
         save: "Simpan Perubahan",
         create: "Buat Keluarga",
         add_member_title: "Tambah Anggota Baru",
+        edit_member_title: "Ubah Anggota",
         fill_required: "Mohon isi semua kolom yang wajib",
       }
     },

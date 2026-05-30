@@ -27,10 +27,11 @@ export default function JoinRequestModal({ isOpen, onClose, family, onSubmit }) 
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
     if (!formData.name.trim() || !formData.email.trim()) return;
 
     setIsSubmitting(true);
-    await onSubmit({
+    const success = await onSubmit({
       name: formData.name.trim(),
       email: formData.email.trim(),
       note: (family?.productType === 'account_custom' 
@@ -39,7 +40,10 @@ export default function JoinRequestModal({ isOpen, onClose, family, onSubmit }) 
       billingCycle: formData.billingCycle,
       productType: family?.productType || 'slot',
     });
-    setIsSubmitting(false);
+
+    if (!success) {
+      setIsSubmitting(false);
+    }
   };
 
   return (

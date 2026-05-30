@@ -5,6 +5,7 @@ import { getDaysRemaining, MAX_FAMILY_SLOTS } from '../lib/familyUtils';
 import { usePublicFamilies, createJoinRequest, useAppSetting } from '../hooks/useSupabaseData';
 import { useToast } from '../hooks/useToast';
 import { cn } from '../utils';
+import { getUpgradeServiceObject } from '../lib/upgradeService';
 
 // Shared Components
 import DashboardHeader from './dashboard/DashboardHeader';
@@ -110,30 +111,14 @@ export default function DashboardPublic({ session, onLogout }) {
 
   // Static Upgrade Service (not tied to any family in DB)
   const upgradeService = useMemo(() => {
-    let features = [];
-    try {
-      features = typeof serviceFeaturesRaw === 'string' ? JSON.parse(serviceFeaturesRaw) : serviceFeaturesRaw;
-    } catch(e) {
-      features = ['Private Account', 'Full Warranty', 'Instant Activation'];
-    }
-
-    return {
-      id: 'upgrade-service',
-      familyName: 'Premium Upgrade',
-      serviceName: 'Premium Upgrade',
-      name: 'Premium Upgrade',
-      notes: serviceTitle,
-      description: serviceDesc,
-      features: features,
-      paymentType: paymentType,
-      validity: validity,
-      productType: 'account_custom',
-      priceSale: upgradePriceSettings,
-      currency: 'IDR',
-      expiryDate: null,
-      storageUsed: 0,
-      slotsAvailable: 99, // unlimited
-    };
+    return getUpgradeServiceObject({
+      upgradePriceSettings,
+      serviceTitle,
+      serviceDesc,
+      serviceFeaturesRaw,
+      paymentType,
+      validity
+    });
   }, [upgradePriceSettings, serviceTitle, serviceDesc, serviceFeaturesRaw, paymentType, validity]);
 
   const services = useMemo(() => [upgradeService], [upgradeService]);
@@ -158,7 +143,7 @@ export default function DashboardPublic({ session, onLogout }) {
   }, [families]);
 
   const handleJoinSubmit = async (data) => {
-    if (!joinRequestTarget) return;
+    if (!joinRequestTarget) return false;
 
     const result = await createJoinRequest({
       familyId: joinRequestTarget.id === 'upgrade-service' ? null : joinRequestTarget.id,
@@ -168,9 +153,11 @@ export default function DashboardPublic({ session, onLogout }) {
     if (result.success) {
       addToast('Request sent successfully!', 'success');
       setJoinRequestTarget(null);
+      return true;
     } else {
       // Translate the error if it's a key
       addToast(t(result.error) || 'Failed to send request', 'error');
+      return false;
     }
   };
 

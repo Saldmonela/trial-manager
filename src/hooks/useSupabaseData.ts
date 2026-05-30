@@ -481,6 +481,7 @@ export function useSupabaseData(): UseSupabaseDataReturn {
             members: (family.members || []).map((m: any) => ({
               ...m,
               addedAt: m.added_at,
+              storageUsed: Number(m.storage_used) || 0,
             })),
           } as Family;
         })
@@ -601,13 +602,19 @@ export function useSupabaseData(): UseSupabaseDataReturn {
   }
 
   async function addMember(familyId: string, member: Omit<Member, 'family_id'>): Promise<ActionResult> {
-    const { id, name, email, addedAt } = member;
+    const { id, name, email, addedAt, storageUsed, storage_used } = member;
     const previousFamilies = families;
+    const initialStorageUsed = Number(storageUsed ?? storage_used) || 0;
     try {
       setFamilies((prev) =>
         prev.map((f) => {
           if (f.id === familyId) {
-            return { ...f, members: [...(f.members || []), member as Member] };
+            const newMember = { 
+              ...member, 
+              storageUsed: initialStorageUsed,
+              storage_used: initialStorageUsed 
+            } as Member;
+            return { ...f, members: [...(f.members || []), newMember] };
           }
           return f;
         })
@@ -615,7 +622,14 @@ export function useSupabaseData(): UseSupabaseDataReturn {
       if (!supabase) throw new Error('Supabase client not initialized');
       const { error } = await supabase
         .from('members')
-        .insert([{ id, family_id: familyId, name, email, added_at: addedAt }]);
+        .insert([{ 
+          id, 
+          family_id: familyId, 
+          name, 
+          email, 
+          added_at: addedAt,
+          storage_used: initialStorageUsed
+        }]);
       if (error) throw error;
       return { success: true };
     } catch (error) {
@@ -642,6 +656,54 @@ export function useSupabaseData(): UseSupabaseDataReturn {
       return { success: true };
     } catch (error) {
       console.error('Error removing member:', error);
+      setFamilies(previousFamilies); // Rollback
+      return { success: false, error: (error as Error).message };
+    }
+  }
+
+  async function updateMember(familyId: string, memberId: string, updatedFields: Partial<Member>): Promise<ActionResult> {
+    const previousFamilies = families;
+    try {
+      // Optimistic update
+      setFamilies((prev) =>
+        prev.map((f) => {
+          if (f.id === familyId) {
+            return {
+              ...f,
+              members: (f.members || []).map((m) =>
+                m.id === memberId 
+                  ? { 
+                      ...m, 
+                      ...updatedFields, 
+                      storageUsed: updatedFields.storageUsed !== undefined ? Number(updatedFields.storageUsed) : m.storageUsed,
+                      storage_used: updatedFields.storageUsed !== undefined ? Number(updatedFields.storageUsed) : (updatedFields.storage_used !== undefined ? Number(updatedFields.storage_used) : m.storage_used)
+                    } 
+                  : m
+              ),
+            };
+          }
+          return f;
+        })
+      );
+
+      if (!supabase) throw new Error('Supabase client not initialized');
+
+      // Map to snake_case payload
+      const payload: any = {};
+      if (updatedFields.name !== undefined) payload.name = updatedFields.name;
+      if (updatedFields.email !== undefined) payload.email = updatedFields.email;
+      if (updatedFields.storageUsed !== undefined) payload.storage_used = Number(updatedFields.storageUsed) || 0;
+      else if (updatedFields.storage_used !== undefined) payload.storage_used = Number(updatedFields.storage_used) || 0;
+
+      const { error } = await supabase
+        .from('members')
+        .update(payload)
+        .eq('id', memberId);
+
+      if (error) throw error;
+      return { success: true };
+    } catch (error) {
+      console.error('Error updating member:', error);
       setFamilies(previousFamilies); // Rollback
       return { success: false, error: (error as Error).message };
     }
@@ -706,6 +768,7 @@ export function useSupabaseData(): UseSupabaseDataReturn {
     updateFamily,
     deleteFamily,
     addMember,
+    updateMember,
     removeMember,
     cancelSale,
     refetch: fetchFamilies,

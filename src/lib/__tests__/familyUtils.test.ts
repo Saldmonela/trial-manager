@@ -14,7 +14,7 @@ describe('familyUtils', () => {
   describe('constants', () => {
     it('has correct max slots and storage', () => {
       expect(MAX_FAMILY_SLOTS).toBe(5);
-      expect(MAX_STORAGE_GB).toBe(2048);
+      expect(MAX_STORAGE_GB).toBe(5120);
     });
   });
 
