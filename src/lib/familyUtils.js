@@ -4,7 +4,7 @@
  */
 
 export const MAX_FAMILY_SLOTS = 5;
-export const MAX_STORAGE_GB = 2048;
+export const MAX_STORAGE_GB = 5120;
 
 export function generateId() {
   return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 15);

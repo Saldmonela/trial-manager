@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
-import { AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
 import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../lib/familyUtils';
 import { useLocalStorage } from '../hooks/useLocalStorage';
+import { getUpgradeServiceObject } from '../lib/upgradeService';
 import { useSupabaseData, useAppSetting, updateSetting, useJoinRequests } from '../hooks/useSupabaseData';
 import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
@@ -19,7 +20,9 @@ import ServicesSection from './dashboard/ServicesSection';
 const AddFamilyModal = lazy(() => import('./modals/AddFamilyModal'));
 const EditFamilyModal = lazy(() => import('./modals/EditFamilyModal'));
 const AddMemberModal = lazy(() => import('./modals/AddMemberModal'));
+const EditMemberModal = lazy(() => import('./modals/EditMemberModal'));
 const DeleteConfirmModal = lazy(() => import('./modals/DeleteConfirmModal'));
+const DeleteMemberConfirmModal = lazy(() => import('./modals/DeleteMemberConfirmModal'));
 const OrderManagementModal = lazy(() => import('./modals/OrderManagementModal'));
 const MigrationTool = lazy(() => import('./MigrationTool'));
 const TutorialModal = lazy(() => import('./TutorialModal'));
@@ -40,6 +43,7 @@ export default function Dashboard({ onLogout }) {
     updateFamily, 
     deleteFamily, 
     addMember, 
+    updateMember,
     removeMember,
     cancelSale
   } = useSupabaseData();
@@ -63,17 +67,24 @@ export default function Dashboard({ onLogout }) {
   const [editFamily, setEditFamily] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);
+  const [editMemberData, setEditMemberData] = useState(null);
+  const [deleteMemberData, setDeleteMemberData] = useState(null);
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
+  const [showBanned, setShowBanned] = useState(true);
   const [sortBy, setSortBy] = useState('created');
   const [sortDirection, setSortDirection] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResult, setSearchResult] = useState(null);
+  const [activeIndex, setActiveIndex] = useState(-1);
   const [showMigration, setShowMigration] = useState(false);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isEditServiceOpen, setIsEditServiceOpen] = useState(false);
   
+  // Highlighting & Scrolling State
+  const [activeHighlight, setActiveHighlight] = useState({ familyId: null, expand: false, matchedEmail: null, role: null });
+
   // Design Setting
   const { value: serviceStyle, setValue: setServiceStyle } = useAppSetting('service_card_style', 'editorial');
 
@@ -129,6 +140,7 @@ export default function Dashboard({ onLogout }) {
   }, []);
 
   const handleSearch = useCallback(() => {
+    setActiveIndex(-1);
     if (!searchQuery.trim()) {
       setSearchResult(null);
       return;
@@ -138,8 +150,11 @@ export default function Dashboard({ onLogout }) {
     const results = [];
 
     families.forEach((family) => {
+      if (!showBanned && (family.isBanned || family.is_banned)) return;
+
       if (family.ownerEmail?.toLowerCase().includes(query)) {
         results.push({
+          familyId: family.id,
           familyName: family.name || 'Family Plan',
           role: 'Owner',
           email: family.ownerEmail,
@@ -149,6 +164,7 @@ export default function Dashboard({ onLogout }) {
       family.members?.forEach((member) => {
         if (member.email?.toLowerCase().includes(query) || member.name?.toLowerCase().includes(query)) {
           results.push({
+            familyId: family.id,
             familyName: family.name || 'Family Plan',
             role: 'Member',
             email: member.email || member.name,
@@ -158,7 +174,60 @@ export default function Dashboard({ onLogout }) {
     });
 
     setSearchResult(results.length > 0 ? results : 'not_found');
-  }, [families, searchQuery]);
+  }, [families, searchQuery, showBanned]);
+
+  const handleResultClick = useCallback((familyId, isMember, email, role) => {
+    setActiveHighlight({ familyId, expand: isMember, matchedEmail: email, role });
+    setActiveIndex(-1); // Reset keyboard selection on click
+
+    // Scroll to the card after state propagation
+    setTimeout(() => {
+      const element = document.getElementById(`family-card-${familyId}`);
+      if (element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 100);
+
+    // Reset highlight after 3 seconds
+    setTimeout(() => {
+      setActiveHighlight((prev) => {
+        if (prev.familyId === familyId) {
+          return { familyId: null, expand: false, matchedEmail: null, role: null };
+        }
+        return prev;
+      });
+    }, 3000);
+  }, []);
+
+  const handleKeyDown = useCallback((e) => {
+    if (!searchResult || searchResult === 'not_found' || searchResult.length === 0) {
+      if (e.key === 'Enter') {
+        handleSearch();
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev < searchResult.length - 1 ? prev + 1 : 0));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActiveIndex((prev) => (prev > 0 ? prev - 1 : searchResult.length - 1));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && activeIndex < searchResult.length) {
+        const selected = searchResult[activeIndex];
+        handleResultClick(selected.familyId, selected.role === 'Member', selected.email, selected.role);
+      } else {
+        handleSearch();
+      }
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      setSearchQuery('');
+      setSearchResult(null);
+      setActiveIndex(-1);
+    }
+  }, [searchResult, activeIndex, handleSearch, handleResultClick]);
 
   const handleSortClick = useCallback((key) => {
     if (sortBy === key) {
@@ -213,17 +282,41 @@ export default function Dashboard({ onLogout }) {
     }
   }, [addMember, addToast]);
 
-  const handleRemoveMember = useCallback(async (familyId, memberId) => {
-    const result = await removeMember(familyId, memberId);
-    if (result?.success) {
-      addToast('Member removed!', 'success');
-    } else {
-      addToast(result?.error || 'Failed to remove member', 'error');
+  const handleRemoveMember = useCallback((familyId, memberId) => {
+    const family = families.find((f) => f.id === familyId);
+    const member = family?.members?.find((m) => m.id === memberId);
+    setDeleteMemberData({
+      familyId,
+      memberId,
+      memberName: member?.name?.trim() || member?.email || 'Member'
+    });
+  }, [families]);
+
+  const confirmDeleteMember = useCallback(async () => {
+    if (deleteMemberData) {
+      const { familyId, memberId } = deleteMemberData;
+      setDeleteMemberData(null);
+      const result = await removeMember(familyId, memberId);
+      if (result?.success) {
+        addToast('Member removed!', 'success');
+      } else {
+        addToast(result?.error || 'Failed to remove member', 'error');
+      }
     }
-  }, [removeMember, addToast]);
+  }, [deleteMemberData, removeMember, addToast]);
+
+  const handleUpdateMember = useCallback(async (familyId, memberId, updatedFields) => {
+    const result = await updateMember(familyId, memberId, updatedFields);
+    if (result?.success) {
+      addToast('Member updated!', 'success');
+    } else {
+      addToast(result?.error || 'Failed to update member', 'error');
+    }
+  }, [updateMember, addToast]);
 
   const sortedFamilies = useMemo(() => {
     const filtered = families.filter((f) => {
+      if (!showBanned && (f.isBanned || f.is_banned)) return false;
 
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
@@ -248,7 +341,7 @@ export default function Dashboard({ onLogout }) {
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [families, filter, sortBy, sortDirection]);
+  }, [families, filter, sortBy, sortDirection, showBanned]);
 
   const stats = useMemo(() => {
     const activeFamilies = families.filter(f => !f.isBanned);
@@ -263,30 +356,14 @@ export default function Dashboard({ onLogout }) {
   
   // Construct the service object from settings
   const upgradeService = useMemo(() => {
-    let features = [];
-    try {
-      features = typeof serviceFeaturesRaw === 'string' ? JSON.parse(serviceFeaturesRaw) : serviceFeaturesRaw;
-    } catch(e) {
-      features = ['Private Account', 'Full Warranty', 'Instant Activation'];
-    }
-
-    return {
-      id: 'upgrade-service',
-      familyName: 'Premium Upgrade',
-      serviceName: 'Premium Upgrade',
-      name: 'Premium Upgrade', // Not strictly needed but kept for compatibility
-      notes: serviceTitle, // Displayed as title
-      description: serviceDesc, // We will use this in ServiceCard
-      features: features, // We will use this in ServiceCard
-      paymentType: paymentType,
-      validity: validity,
-      productType: 'account_custom',
-      priceSale: upgradePriceSettings,
-      currency: 'IDR',
-      expiryDate: null,
-      storageUsed: 0,
-      slotsAvailable: 99, // unlimited
-    };
+    return getUpgradeServiceObject({
+      upgradePriceSettings,
+      serviceTitle,
+      serviceDesc,
+      serviceFeaturesRaw,
+      paymentType,
+      validity
+    });
   }, [upgradePriceSettings, serviceTitle, serviceDesc, serviceFeaturesRaw, paymentType, validity]);
 
   const services = useMemo(() => [upgradeService], [upgradeService]);
@@ -358,8 +435,11 @@ export default function Dashboard({ onLogout }) {
               <input
                 type="text"
                 value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setActiveIndex(-1);
+                }}
+                onKeyDown={handleKeyDown}
                 placeholder={t('dashboard.search_placeholder')}
                 className={cn(
                   'w-full pl-8 pr-4 py-3 bg-transparent border-b-2 font-serif text-lg focus:outline-none transition-all duration-300',
@@ -383,6 +463,7 @@ export default function Dashboard({ onLogout }) {
                 onClick={() => {
                   setSearchQuery('');
                   setSearchResult(null);
+                  setActiveIndex(-1);
                 }}
                 className={cn(
                   'w-full md:w-auto px-4 py-3 transition-colors min-h-[44px]',
@@ -421,9 +502,12 @@ export default function Dashboard({ onLogout }) {
                       {searchResult.map((result, idx) => (
                         <div
                           key={idx}
+                          onClick={() => handleResultClick(result.familyId, result.role === 'Member', result.email, result.role)}
                           className={cn(
-                            'flex items-center justify-between py-4 border-b border-dashed last:border-0',
-                            theme === 'light' ? 'border-stone-200' : 'border-stone-800'
+                            'flex items-center justify-between py-4 border-b border-dashed last:border-0 cursor-pointer transition-colors px-2 rounded-sm',
+                            theme === 'light' 
+                              ? cn('border-stone-200 hover:bg-stone-100', idx === activeIndex && 'bg-stone-200/80') 
+                              : cn('border-stone-800 hover:bg-stone-800/60', idx === activeIndex && 'bg-stone-800')
                           )}
                         >
                           <div className="flex items-center gap-4">
@@ -487,6 +571,8 @@ export default function Dashboard({ onLogout }) {
           setFilter={setFilter}
           setMobileSortOpen={setMobileSortOpen}
           onSortClick={handleSortClick}
+          showBanned={showBanned}
+          onToggleBanned={() => setShowBanned(prev => !prev)}
         />
 
         <ServicesSection 
@@ -514,6 +600,7 @@ export default function Dashboard({ onLogout }) {
           onEdit={setEditFamily}
           onAddMember={setAddMemberFamilyId}
           onRemoveMember={handleRemoveMember}
+          onEditMember={(familyId, member) => setEditMemberData({ familyId, member })}
           onCancelSale={async (familyId) => {
             const result = await cancelSale(familyId);
             if (result.success) {
@@ -542,6 +629,9 @@ export default function Dashboard({ onLogout }) {
               addToast(`Gagal reject: ${result?.error || 'Unknown error'}`, 'error');
             }
           }}
+          highlightedFamilyId={activeHighlight.familyId}
+          forceExpandFamilyId={activeHighlight.expand ? activeHighlight.familyId : null}
+          highlightedEmail={activeHighlight.matchedEmail}
         />
       </main>
 
@@ -574,11 +664,26 @@ export default function Dashboard({ onLogout }) {
           familyId={addMemberFamilyId}
         />
 
+        <EditMemberModal
+          isOpen={!!editMemberData}
+          onClose={() => setEditMemberData(null)}
+          onUpdate={handleUpdateMember}
+          familyId={editMemberData?.familyId}
+          member={editMemberData?.member}
+        />
+
         <DeleteConfirmModal
           isOpen={!!deleteFamilyId}
           onClose={() => setDeleteFamilyId(null)}
           onConfirm={confirmDeleteFamily}
           familyName={families.find((f) => f.id === deleteFamilyId)?.name || 'Family'}
+        />
+
+        <DeleteMemberConfirmModal
+          isOpen={!!deleteMemberData}
+          onClose={() => setDeleteMemberData(null)}
+          onConfirm={confirmDeleteMember}
+          memberName={deleteMemberData?.memberName || 'Member'}
         />
 
         {showTutorial && <TutorialModal onClose={handleTutorialClose} />}

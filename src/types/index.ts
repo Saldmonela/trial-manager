@@ -11,6 +11,8 @@ export interface Member {
   added_at: string;
   /** Camel-case alias populated by useSupabaseData */
   addedAt?: string;
+  storage_used?: number;
+  storageUsed?: number;
 }
 
 export type ProductType = 'slot' | 'account_ready' | 'account_custom';
@@ -87,6 +89,7 @@ export interface UseSupabaseDataReturn {
   updateFamily: (family: FamilyInput) => Promise<ActionResult>;
   deleteFamily: (familyId: string) => Promise<ActionResult>;
   addMember: (familyId: string, member: Omit<Member, 'family_id'>) => Promise<ActionResult>;
+  updateMember: (familyId: string, memberId: string, updatedFields: Partial<Member>) => Promise<ActionResult>;
   removeMember: (familyId: string, memberId: string) => Promise<ActionResult>;
   cancelSale: (familyId: string) => Promise<ActionResult>;
   refetch: () => Promise<void>;

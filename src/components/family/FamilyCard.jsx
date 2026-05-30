@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Users, X, Lock, Crown, Pencil, Trash2,
@@ -47,7 +47,7 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
   );
 };
 
-function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onCancelSale, pendingOrders = [], onApproveOrder, onRejectOrder, readOnly = false, onRequest }) {
+function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, pendingOrders = [], onApproveOrder, onRejectOrder, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const [showEmail, setShowEmail] = useState(false);
@@ -122,6 +122,26 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
   const daysRemaining = getDaysRemaining(family.expiryDate);
   const expiryStatus = getExpiryStatus(daysRemaining);
 
+  const effectiveStorageUsed = useMemo(() => {
+    const memberStorageSum = family.members?.reduce((total, member) => {
+      return total + Number(member.storageUsed ?? member.storage_used ?? 0);
+    }, 0) || 0;
+
+    const ownerStorageUsed = Number(family.storageUsed ?? family.storage_used ?? 0) || 0;
+    
+    // Total storage = Owner (legacy) + Members
+    const rawUsed = ownerStorageUsed + memberStorageSum;
+    
+    return Number(rawUsed.toFixed(2));
+  }, [family.members, family.storageUsed, family.storage_used]);
+
+  const { maxMemberStorage, totalMemberStorage } = useMemo(() => {
+    const storages = family.members?.map(m => Number(m.storageUsed ?? m.storage_used ?? 0) || 0) || [];
+    const max = Math.max(...storages, 0);
+    const total = storages.reduce((a, b) => a + b, 0);
+    return { maxMemberStorage: max, totalMemberStorage: total };
+  }, [family.members]);
+
   const copyTimerRef = useRef(null);
 
   // Cleanup copy timer on unmount
@@ -131,11 +151,64 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
     };
   }, []);
 
-  const handleCopy = (text, type) => {
-    navigator.clipboard.writeText(text);
-    setCopied(type);
-    if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
-    copyTimerRef.current = setTimeout(() => setCopied(null), 2000);
+  // Auto expand member list when forceExpand becomes true
+  useEffect(() => {
+    if (forceExpand) {
+      setIsExpanded(true);
+    }
+  }, [forceExpand]);
+
+  const handleCopy = async (text, type) => {
+    if (!text) return;
+    let success = false;
+
+    // 1. Coba menggunakan API modern navigator.clipboard jika didukung
+    if (navigator && navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+      try {
+        await navigator.clipboard.writeText(text);
+        success = true;
+      } catch (err) {
+        console.warn('[FamilyCard] navigator.clipboard failed, trying fallback...', err);
+      }
+    }
+
+    // 2. Fallback: Menggunakan elemen textarea sementara (document.execCommand)
+    if (!success) {
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.setAttribute('readonly', ''); // Mencegah keyboard virtual muncul di perangkat mobile
+        
+        // Sembunyikan elemen secara aman dari pandangan pengguna
+        textarea.style.position = 'fixed';
+        textarea.style.top = '-9999px';
+        textarea.style.left = '-9999px';
+        textarea.style.opacity = '0';
+        
+        document.body.appendChild(textarea);
+        textarea.select();
+        // Fallback untuk perangkat iOS
+        textarea.setSelectionRange(0, 99999);
+        
+        const result = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        
+        if (result) {
+          success = true;
+        } else {
+          throw new Error('document.execCommand failed');
+        }
+      } catch (err) {
+        console.error('[FamilyCard] Fallback copy failed:', err);
+      }
+    }
+
+    // Tampilkan feedback jika sukses menyalin
+    if (success) {
+      setCopied(type);
+      if (copyTimerRef.current) clearTimeout(copyTimerRef.current);
+      copyTimerRef.current = setTimeout(() => setCopied(null), 2000);
+    }
   };
 
   const isPublicView = readOnly; // Assuming readOnly implies public view
@@ -144,6 +217,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
 
   return (
     <motion.div
+      id={`family-card-${family.id}`}
       layout="position"
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
@@ -154,6 +228,12 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
         theme === 'light' 
           ? "bg-white shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)]" 
           : "bg-stone-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)]",
+        // Highlight styling
+        isHighlighted && (
+          theme === 'light'
+            ? "border-gold-500 ring-2 ring-gold-500/20 scale-[1.02] shadow-[0_0_20px_rgba(198,168,124,0.6)] z-30"
+            : "border-gold-500 ring-2 ring-gold-500/30 scale-[1.02] shadow-[0_0_25px_rgba(198,168,124,0.4)] z-30"
+        ),
         // State-based border + opacity
         readOnly && family.soldAt
           ? "opacity-50 border-red-500/50 hover:border-red-500"
@@ -161,9 +241,11 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
             ? "opacity-[0.7] border-amber-500/50 hover:border-amber-500"
             : !readOnly && family.isBanned
               ? "border-red-600 shadow-[4px_4px_0px_0px_rgba(220,38,38,0.3)] bg-red-50 dark:bg-red-950/30 dark:border-red-700"
-              : theme === 'light'
-                ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
-                : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
+              : !isHighlighted && (
+                  theme === 'light'
+                    ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
+                    : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
+                )
       )}
     >
       {/* Right-side stacked column: Expiry → Order → Edit/Delete */}
@@ -490,29 +572,35 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
            <div className="flex items-center justify-between text-xs mb-2">
             <span className={cn("font-medium uppercase tracking-widest", theme === 'light' ? "text-stone-400" : "text-stone-500")}>{t('dashboard.family_card.storage')}</span>
             <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-              {family.storageUsed || 0}GB <span className="text-stone-400">/ 2048GB</span>
+              {effectiveStorageUsed}GB <span className="text-stone-400">/ {MAX_STORAGE_GB}GB</span>
             </span>
           </div>
           <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
             <div 
-              className={cn("absolute top-0 left-0 h-full transition-all duration-500", (family.storageUsed || 0) >= MAX_STORAGE_GB ? "bg-wine" : "bg-stone-900 dark:bg-stone-50")}
-              style={{ width: `${Math.min(((family.storageUsed || 0) / MAX_STORAGE_GB) * 100, 100)}%` }}
+              className={cn("absolute top-0 left-0 h-full transition-all duration-500", effectiveStorageUsed >= MAX_STORAGE_GB ? "bg-wine" : "bg-stone-900 dark:bg-stone-50")}
+              style={{ width: `${Math.min((effectiveStorageUsed / MAX_STORAGE_GB) * 100, 100)}%` }}
             />
           </div>
         </div>
 
         {/* Owner Credentials */}
-        {/* Owner Credentials - Only show in Admin mode */}
         {!readOnly && (
-          <div className="space-y-3 mb-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                 <Crown className="w-4 h-4 text-gold-500" />
-                 <span className={cn("text-sm font-medium", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-                   {showEmail ? family.ownerEmail : maskEmail(family.ownerEmail)}
-                 </span>
+          <div className="space-y-1 mb-6">
+            <div className={cn(
+              "grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 transition-all duration-300 rounded-sm py-1.5 pl-3 pr-2 -mx-2",
+              highlightedEmail && family.ownerEmail === highlightedEmail && (
+                theme === 'light' 
+                  ? "bg-gold-500/10 ring-1 ring-gold-500/20" 
+                  : "bg-gold-500/10 ring-1 ring-gold-500/30"
+              )
+            )}>
+              <div className="flex items-center justify-start shrink-0">
+                <Crown className="w-4 h-4 text-gold-500" />
               </div>
-              <div className="flex items-center gap-3">
+              <span className={cn("text-sm font-medium min-w-0 truncate", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
+                {showEmail ? family.ownerEmail : maskEmail(family.ownerEmail)}
+              </span>
+              <div className="flex items-center justify-end gap-5 shrink-0">
                 <button 
                   onClick={() => setShowEmail(!showEmail)}
                   className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
@@ -521,20 +609,21 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
                 </button>
                 <button 
                   onClick={() => handleCopy(family.ownerEmail, 'email')}
-                  className={cn("text-xs uppercase tracking-wider hover:underline min-h-[44px] flex items-center", theme === 'light' ? "text-gold-600" : "text-gold-400")}
+                  className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
                 >
                   {copied === 'email' ? t('common.copied') : t('common.copy')}
                 </button>
               </div>
             </div>
-             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                 <Lock className={cn("w-4 h-4", theme === 'light' ? "text-stone-400" : "text-stone-600")} />
-                 <span className={cn("text-sm font-mono", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-                    {showPassword ? family.ownerPassword : '••••••••••'}
-                 </span>
+
+            <div className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 transition-all duration-300 rounded-sm py-1.5 pl-3 pr-2 -mx-2">
+              <div className="flex items-center justify-start shrink-0">
+                <Lock className={cn("w-4 h-4", theme === 'light' ? "text-stone-400" : "text-stone-600")} />
               </div>
-              <div className="flex items-center gap-3">
+              <span className={cn("text-sm font-mono min-w-0 truncate", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
+                {showPassword ? family.ownerPassword : '••••••••••'}
+              </span>
+              <div className="flex items-center justify-end gap-5 shrink-0">
                 <button 
                   onClick={() => setShowPassword(!showPassword)}
                   className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
@@ -543,7 +632,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
                 </button>
                 <button 
                   onClick={() => handleCopy(family.ownerPassword, 'password')}
-                  className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-gold-600" : "text-gold-400")}
+                  className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
                 >
                   {copied === 'password' ? t('common.copied') : t('common.copy')}
                 </button>
@@ -628,31 +717,112 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onC
           >
             <div className="p-4 space-y-2">
               {family.members?.length > 0 ? (
-                family.members.map((member, index) => (
-                  <div 
-                    key={member.id} 
-                    className={cn(
-                      "flex items-center justify-between p-3 border-b border-dashed last:border-0",
-                      theme === 'light' ? "border-stone-200" : "border-stone-800"
-                    )}
-                  >
-                    <div className="flex items-center gap-4">
-                      <div className={cn(
-                        "w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono border",
-                        theme === 'light' ? "border-stone-300 text-stone-500" : "border-stone-700 text-stone-400"
-                      )}>
-                        {index + 1}
-                      </div>
-                      <span className={cn("text-sm", theme === 'light' ? "text-stone-900" : "text-stone-300")}>{member.name || member.email}</span>
-                    </div>
-                    <button
-                      onClick={() => onRemoveMember(family.id, member.id)}
-                      className="text-stone-400 hover:text-wine transition-colors"
+                family.members.map((member, index) => {
+                  const isMemberHighlighted = highlightedEmail && (member.email === highlightedEmail || member.name === highlightedEmail);
+                  const memberStorage = Number(member.storageUsed ?? member.storage_used ?? 0) || 0;
+                  const formattedStorage = memberStorage % 1 === 0 
+                    ? `${memberStorage}GB` 
+                    : `${Number(memberStorage.toFixed(2))}GB`;
+
+                  const progressPercent = maxMemberStorage > 0 ? (memberStorage / maxMemberStorage) * 100 : 0;
+                  const clampedProgress = Math.min(Math.max(progressPercent, 0), 100);
+                  const contributionRatio = totalMemberStorage > 0 ? memberStorage / totalMemberStorage : 0;
+
+                  const isMax = memberStorage === maxMemberStorage && memberStorage > 0;
+                  const isHeavy = contributionRatio >= 0.40;
+                  const isWarning = contributionRatio >= 0.25;
+                  const isNoticeable = contributionRatio >= 0.10;
+
+                  return (
+                    <div 
+                      key={member.id} 
+                      className={cn(
+                        "flex items-center justify-between p-3 border-b border-dashed last:border-0 rounded-sm transition-all duration-300",
+                        theme === 'light' ? "border-stone-200" : "border-stone-800",
+                        isMemberHighlighted && (
+                          theme === 'light'
+                            ? "bg-gold-500/10 ring-1 ring-gold-500/20 border-gold-300"
+                            : "bg-gold-500/10 ring-1 ring-gold-500/30 border-gold-800"
+                        )
+                      )}
                     >
-                      <X className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))
+                      <div className="flex items-center gap-4 min-w-0 flex-1">
+                        <div className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center text-xs font-mono border shrink-0",
+                          theme === 'light' ? "border-stone-300 text-stone-500" : "border-stone-700 text-stone-400"
+                        )}>
+                          {index + 1}
+                        </div>
+                        <div className="flex-1 min-w-0 flex flex-col justify-center">
+                          <span className={cn("text-sm truncate block font-medium", theme === 'light' ? "text-stone-900" : "text-stone-300")}>
+                            {member.name?.trim() || member.email || 'Unnamed Member'}
+                          </span>
+                          {/* Mini Storage Progress Bar */}
+                          <div className={cn(
+                            "w-full h-1 mt-1.5 rounded-full relative overflow-hidden transition-all duration-300",
+                            theme === 'light' 
+                              ? (memberStorage > 0 ? "bg-stone-200" : "bg-stone-200/50") 
+                              : (memberStorage > 0 ? "bg-stone-800" : "bg-stone-950/40")
+                          )}>
+                            <div 
+                              className={cn(
+                                "absolute top-0 left-0 h-full transition-all duration-500",
+                                isMax || isHeavy
+                                  ? "bg-red-500"
+                                  : isWarning
+                                    ? "bg-amber-500"
+                                    : isNoticeable
+                                      ? (theme === 'light' ? "bg-stone-500" : "bg-stone-400")
+                                      : (theme === 'light' ? "bg-stone-300" : "bg-stone-700")
+                              )}
+                              style={{ width: `${clampedProgress}%` }}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0 ml-2">
+                        <span className={cn(
+                          "text-[10px] font-mono px-1.5 py-0.5 rounded-sm transition-colors duration-300",
+                          isMax
+                            ? (theme === 'light'
+                                ? "bg-red-100 text-red-800 font-bold border-2 border-red-300 shadow-sm"
+                                : "bg-red-900/50 text-red-200 font-bold border-2 border-red-700 shadow-sm")
+                            : isHeavy
+                              ? (theme === 'light' 
+                                  ? "bg-red-50 text-red-700 font-bold border border-red-200" 
+                                  : "bg-red-950/30 text-red-400 font-bold border border-red-900/50")
+                              : isWarning
+                                ? (theme === 'light' 
+                                    ? "bg-amber-50 text-amber-700 font-semibold border border-amber-200" 
+                                    : "bg-amber-950/30 text-amber-400 font-semibold border border-amber-900/50")
+                                : isNoticeable
+                                  ? (theme === 'light' 
+                                      ? "bg-stone-100 text-stone-700 font-medium" 
+                                      : "bg-stone-800 text-stone-300 font-medium")
+                                  : "text-stone-400 dark:text-stone-600 font-normal"
+                        )}>
+                          {formattedStorage}
+                        </span>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => onEditMember?.(family.id, member)}
+                            className="text-stone-400 hover:text-gold-500 transition-colors p-1"
+                            title="Edit member"
+                          >
+                            <Pencil className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => onRemoveMember(family.id, member.id)}
+                            className="text-stone-400 hover:text-wine transition-colors p-1"
+                            title="Remove member"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
               ) : (
                 <p className={cn("text-center py-4 text-sm italic font-serif", theme === 'light' ? "text-stone-400" : "text-stone-600")}>No members yet</p>
               )}

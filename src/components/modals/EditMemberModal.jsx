@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { generateId } from '../../lib/familyUtils';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
 import { cn } from '../../utils';
 
-export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
+export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, member }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
@@ -15,30 +14,37 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
     storageUsed: '',
   });
 
+  useEffect(() => {
+    if (member) {
+      setFormData({
+        name: member.name || '',
+        email: member.email || '',
+        storageUsed: member.storageUsed !== undefined ? String(member.storageUsed) : String(member.storage_used || ''),
+      });
+    }
+  }, [member]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.email) return;
-    
-    onAdd(familyId, {
-      id: generateId(),
+
+    onUpdate(familyId, member.id, {
       name: formData.name,
       email: formData.email,
       storageUsed: Number(formData.storageUsed) || 0,
-      addedAt: new Date().toISOString(),
     });
-    
-    setFormData({ name: '', email: '', storageUsed: '' });
+
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.add_member_title')}>
+    <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.edit_member_title') || 'Edit Member'}>
       <form onSubmit={handleSubmit} className="space-y-6">
         <FormField
           label={t('dashboard.form.member_name_label')}
           value={formData.name}
           onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-          placeholder="e.g. John Doe, Kaka..."
+          placeholder="e.g. John Doe"
         />
 
         <FormField
@@ -73,7 +79,7 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
               : "bg-stone-50 text-stone-900 hover:bg-stone-200"
           )}
         >
-          {t('dashboard.family_card.add_member')}
+          {t('common.save') || 'Save Changes'}
         </button>
       </form>
     </Modal>

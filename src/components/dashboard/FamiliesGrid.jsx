@@ -12,12 +12,16 @@ export default function FamiliesGrid({
   onEdit,
   onAddMember,
   onRemoveMember,
+  onEditMember,
   onCancelSale,
   pendingOrdersByFamily = {},
   onApproveOrder,
   onRejectOrder,
   readOnly = false,
   onRequest,
+  highlightedFamilyId = null,
+  forceExpandFamilyId = null,
+  highlightedEmail = null,
 }) {
   if (sortedFamilies.length === 0) {
     return (
@@ -83,12 +87,16 @@ export default function FamiliesGrid({
             onEdit={onEdit}
             onAddMember={onAddMember}
             onRemoveMember={onRemoveMember}
+            onEditMember={onEditMember}
             onCancelSale={onCancelSale}
             pendingOrders={pendingOrdersByFamily[family.id] || []}
             onApproveOrder={onApproveOrder}
             onRejectOrder={onRejectOrder}
             readOnly={readOnly}
             onRequest={onRequest}
+            isHighlighted={family.id === highlightedFamilyId}
+            forceExpand={family.id === forceExpandFamilyId}
+            highlightedEmail={family.id === highlightedFamilyId ? highlightedEmail : null}
           />
         ))}
       </AnimatePresence>
