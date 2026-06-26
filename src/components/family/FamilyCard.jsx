@@ -3,9 +3,9 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Users, X, Lock, Crown, Pencil, Trash2,
   AlertTriangle, Calendar, ChevronDown, ShieldCheck, Mail, RotateCcw,
-  Bell, Check, Ban
+  Bell, Check, Ban, Cloud, RefreshCw, Unplug
 } from 'lucide-react';
-import { cn } from '../../utils';
+import { cn, formatBytes } from '../../utils';
 import { 
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
@@ -47,11 +47,28 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
   );
 };
 
-function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, pendingOrders = [], onApproveOrder, onRejectOrder, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null }) {
+function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, pendingOrders = [], onApproveOrder, onRejectOrder, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const [showEmail, setShowEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [driveBusy, setDriveBusy] = useState(false);
+
+  // Map email -> akun Drive terhubung; dipakai untuk owner & member (case-insensitive).
+  // Hanya untuk tampilan admin (publik tidak menerima connectedAccounts).
+  const accountByEmail = useMemo(() => {
+    const m = new Map();
+    if (readOnly) return m;
+    for (const a of (connectedAccounts || [])) {
+      if (a.status === 'connected' && a.email) m.set(a.email.toLowerCase(), a);
+    }
+    return m;
+  }, [connectedAccounts, readOnly]);
+
+  const driveAccount = useMemo(
+    () => (family.ownerEmail ? accountByEmail.get(family.ownerEmail.toLowerCase()) || null : null),
+    [accountByEmail, family.ownerEmail],
+  );
 
   const getButtonText = () => {
     if (family.productType === 'account_ready') {
@@ -122,25 +139,40 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
   const daysRemaining = getDaysRemaining(family.expiryDate);
   const expiryStatus = getExpiryStatus(daysRemaining);
 
+  // Headline kartu — fallback manual (hanya saat TIDAK ada akun pool terhubung):
+  // owner manual GB + jumlah manual member (GB). Angka per-member tidak ditampilkan
+  // (Google tak bisa kasih rincian per-orang untuk shared pool), tapi nilai manual
+  // lama tetap ikut dihitung di total fallback ini.
   const effectiveStorageUsed = useMemo(() => {
-    const memberStorageSum = family.members?.reduce((total, member) => {
-      return total + Number(member.storageUsed ?? member.storage_used ?? 0);
-    }, 0) || 0;
-
     const ownerStorageUsed = Number(family.storageUsed ?? family.storage_used ?? 0) || 0;
-    
-    // Total storage = Owner (legacy) + Members
-    const rawUsed = ownerStorageUsed + memberStorageSum;
-    
-    return Number(rawUsed.toFixed(2));
-  }, [family.members, family.storageUsed, family.storage_used]);
+    const memberSum = (family.members || []).reduce(
+      (s, m) => s + (Number(m.storageUsed ?? m.storage_used ?? 0) || 0),
+      0,
+    );
+    return Number((ownerStorageUsed + memberSum).toFixed(2));
+  }, [family.storageUsed, family.storage_used, family.members]);
 
-  const { maxMemberStorage, totalMemberStorage } = useMemo(() => {
-    const storages = family.members?.map(m => Number(m.storageUsed ?? m.storage_used ?? 0) || 0) || [];
-    const max = Math.max(...storages, 0);
-    const total = storages.reduce((a, b) => a + b, 0);
-    return { maxMemberStorage: max, totalMemberStorage: total };
-  }, [family.members]);
+  // Pool gabungan family: 1 family = 1 pool Google One. Limit dihitung SEKALI;
+  // used = pemakaian semua anggota (real utk akun terhubung + manual utk yang belum).
+  const familyPool = useMemo(() => {
+    const emails = new Set();
+    if (family.ownerEmail) emails.add(family.ownerEmail.toLowerCase());
+    (family.members || []).forEach((m) => m.email && emails.add(m.email.toLowerCase()));
+
+    const accts = (connectedAccounts || []).filter(
+      (a) => a.status === 'connected' && a.email && emails.has(a.email.toLowerCase()),
+    );
+    if (accts.length === 0) return { hasLive: false };
+
+    // 1 family = 1 pool Google One. Tiap akun melaporkan angka POOL yang SAMA
+    // (limit & usage identik di seluruh anggota), jadi ambil SATU nilai (max) —
+    // JANGAN dijumlah (kalau dijumlah jadi double-count: 586GB×2 = 1.2TB).
+    const isUnlimited = accts.some((a) => a.totalBytes === null || a.totalBytes === undefined);
+    const poolLimit = isUnlimited ? null : Math.max(...accts.map((a) => Number(a.totalBytes) || 0));
+    const poolUsed = Math.max(...accts.map((a) => Number(a.usedBytes) || 0));
+
+    return { hasLive: true, poolLimit, isUnlimited, poolUsed };
+  }, [connectedAccounts, family.ownerEmail, family.members]);
 
   const copyTimerRef = useRef(null);
 
@@ -279,14 +311,18 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
         {/* Edit/Delete Buttons (Admin only) */}
         {!readOnly && (
           <div className="flex items-center gap-0.5 mt-0.5">
-            <button 
+            <button
               onClick={() => onEdit(family)}
+              aria-label="Edit family"
+              title="Edit family"
               className={cn("p-2 transition-colors", theme === 'light' ? "text-stone-400 hover:text-stone-900" : "text-stone-500 hover:text-stone-50")}
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
-            <button 
+            <button
               onClick={() => onDelete(family.id)}
+              aria-label="Delete family"
+              title="Delete family"
               className={cn("p-2 transition-colors", theme === 'light' ? "text-stone-400 hover:text-wine" : "text-stone-500 hover:text-red-400")}
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -458,6 +494,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                 <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     onClick={(e) => { e.stopPropagation(); onApproveOrder?.(order.id, order); }}
+                    aria-label="Approve order"
                     className={cn(
                       "p-1.5 rounded-sm border transition-all hover:-translate-y-0.5",
                       theme === 'light'
@@ -470,6 +507,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                   </button>
                   <button
                     onClick={(e) => { e.stopPropagation(); onRejectOrder?.(order.id, order); }}
+                    aria-label="Reject order"
                     className={cn(
                       "p-1.5 rounded-sm border transition-all hover:-translate-y-0.5",
                       theme === 'light'
@@ -569,18 +607,53 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
 
         {/* Storage Usage */}
         <div className="mb-6">
-           <div className="flex items-center justify-between text-xs mb-2">
-            <span className={cn("font-medium uppercase tracking-widest", theme === 'light' ? "text-stone-400" : "text-stone-500")}>{t('dashboard.family_card.storage')}</span>
-            <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-              {effectiveStorageUsed}GB <span className="text-stone-400">/ {MAX_STORAGE_GB}GB</span>
-            </span>
-          </div>
-          <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
-            <div 
-              className={cn("absolute top-0 left-0 h-full transition-all duration-500", effectiveStorageUsed >= MAX_STORAGE_GB ? "bg-wine" : "bg-stone-900 dark:bg-stone-50")}
-              style={{ width: `${Math.min((effectiveStorageUsed / MAX_STORAGE_GB) * 100, 100)}%` }}
-            />
-          </div>
+          {familyPool.hasLive ? (
+            // --- Kuota Drive pool family (gabungan; limit pool dihitung SEKALI) ---
+            (() => {
+              const used = familyPool.poolUsed;
+              const total = familyPool.poolLimit; // null = unlimited
+              const isUnlimited = familyPool.isUnlimited;
+              const pct = isUnlimited || !total ? 0 : Math.min((used / total) * 100, 100);
+              const isFullDrive = !isUnlimited && pct >= 90;
+              return (
+                <>
+                  <div className="flex items-center justify-between text-xs mb-2">
+                    <span className={cn("font-medium uppercase tracking-widest flex items-center gap-1.5", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
+                      <Cloud className="w-3 h-3 text-emerald-500" />
+                      {t('dashboard.family_card.storage')}
+                    </span>
+                    <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
+                      {formatBytes(used)} <span className="text-stone-400">/ {isUnlimited ? 'Unlimited' : formatBytes(total)}</span>
+                    </span>
+                  </div>
+                  <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
+                    {!isUnlimited && (
+                      <div
+                        className={cn("absolute top-0 left-0 h-full transition-all duration-500", isFullDrive ? "bg-wine" : "bg-emerald-500")}
+                        style={{ width: `${pct}%` }}
+                      />
+                    )}
+                  </div>
+                </>
+              );
+            })()
+          ) : (
+            // --- Storage manual (legacy) ---
+            <>
+              <div className="flex items-center justify-between text-xs mb-2">
+                <span className={cn("font-medium uppercase tracking-widest", theme === 'light' ? "text-stone-400" : "text-stone-500")}>{t('dashboard.family_card.storage')}</span>
+                <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
+                  {effectiveStorageUsed}GB <span className="text-stone-400">/ {MAX_STORAGE_GB}GB</span>
+                </span>
+              </div>
+              <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
+                <div
+                  className={cn("absolute top-0 left-0 h-full transition-all duration-500", effectiveStorageUsed >= MAX_STORAGE_GB ? "bg-wine" : "bg-stone-900 dark:bg-stone-50")}
+                  style={{ width: `${Math.min((effectiveStorageUsed / MAX_STORAGE_GB) * 100, 100)}%` }}
+                />
+              </div>
+            </>
+          )}
         </div>
 
         {/* Owner Credentials */}
@@ -607,7 +680,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                 >
                   {showEmail ? t('common.hide') : t('common.show')}
                 </button>
-                <button 
+                <button
                   onClick={() => handleCopy(family.ownerEmail, 'email')}
                   className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
                 >
@@ -615,6 +688,58 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                 </button>
               </div>
             </div>
+
+            {/* Google Drive connection row (admin only) */}
+            {family.ownerEmail && (
+              <div className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 py-1.5 pl-3 pr-2 -mx-2">
+                <div className="flex items-center justify-start shrink-0">
+                  <Cloud className={cn("w-4 h-4", driveAccount ? "text-emerald-500" : (theme === 'light' ? "text-stone-400" : "text-stone-600"))} />
+                </div>
+                {driveAccount ? (
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
+                      Drive Connected
+                    </span>
+                  </span>
+                ) : (
+                  <span className={cn("text-xs italic font-serif min-w-0 truncate", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
+                    Not connected to Drive
+                  </span>
+                )}
+                <div className="flex items-center justify-end gap-3 shrink-0">
+                  {driveAccount ? (
+                    <>
+                      <button
+                        onClick={async () => { setDriveBusy(true); await onSyncDrive?.(driveAccount.id); setDriveBusy(false); }}
+                        disabled={driveBusy}
+                        className={cn("flex items-center gap-1 text-xs uppercase tracking-wider hover:underline disabled:opacity-50", theme === 'light' ? "text-stone-500 hover:text-stone-900" : "text-stone-400 hover:text-stone-50")}
+                        title="Sync quota"
+                      >
+                        <RefreshCw className={cn("w-3 h-3", driveBusy && "animate-spin")} />
+                        Sync
+                      </button>
+                      <button
+                        onClick={() => onDisconnectDrive?.(driveAccount.id)}
+                        aria-label="Disconnect Drive"
+                        className={cn("flex items-center gap-1 text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400 hover:text-wine" : "text-stone-500 hover:text-red-400")}
+                        title="Disconnect Drive"
+                      >
+                        <Unplug className="w-3 h-3" />
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={() => onConnectDrive?.(family.ownerEmail)}
+                      className={cn("flex items-center gap-1 text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
+                      title="Connect Google Drive"
+                    >
+                      <Plus className="w-3 h-3" />
+                      Connect
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 transition-all duration-300 rounded-sm py-1.5 pl-3 pr-2 -mx-2">
               <div className="flex items-center justify-start shrink-0">
@@ -712,30 +837,16 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             exit={{ height: 0, opacity: 0 }}
             className={cn(
               "border-t", 
-              theme === 'light' ? "border-slate-200 bg-stone-50" : "border-slate-800 bg-stone-950"
+              theme === 'light' ? "border-stone-200 bg-stone-50" : "border-stone-800 bg-stone-950"
             )}
           >
             <div className="p-4 space-y-2">
               {family.members?.length > 0 ? (
                 family.members.map((member, index) => {
                   const isMemberHighlighted = highlightedEmail && (member.email === highlightedEmail || member.name === highlightedEmail);
-                  const memberStorage = Number(member.storageUsed ?? member.storage_used ?? 0) || 0;
-                  const formattedStorage = memberStorage % 1 === 0 
-                    ? `${memberStorage}GB` 
-                    : `${Number(memberStorage.toFixed(2))}GB`;
-
-                  const progressPercent = maxMemberStorage > 0 ? (memberStorage / maxMemberStorage) * 100 : 0;
-                  const clampedProgress = Math.min(Math.max(progressPercent, 0), 100);
-                  const contributionRatio = totalMemberStorage > 0 ? memberStorage / totalMemberStorage : 0;
-
-                  const isMax = memberStorage === maxMemberStorage && memberStorage > 0;
-                  const isHeavy = contributionRatio >= 0.40;
-                  const isWarning = contributionRatio >= 0.25;
-                  const isNoticeable = contributionRatio >= 0.10;
-
                   return (
-                    <div 
-                      key={member.id} 
+                    <div
+                      key={member.id}
                       className={cn(
                         "flex items-center justify-between p-3 border-b border-dashed last:border-0 rounded-sm transition-all duration-300",
                         theme === 'light' ? "border-stone-200" : "border-stone-800",
@@ -753,72 +864,64 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                         )}>
                           {index + 1}
                         </div>
-                        <div className="flex-1 min-w-0 flex flex-col justify-center">
-                          <span className={cn("text-sm truncate block font-medium", theme === 'light' ? "text-stone-900" : "text-stone-300")}>
-                            {member.name?.trim() || member.email || 'Unnamed Member'}
-                          </span>
-                          {/* Mini Storage Progress Bar */}
-                          <div className={cn(
-                            "w-full h-1 mt-1.5 rounded-full relative overflow-hidden transition-all duration-300",
-                            theme === 'light' 
-                              ? (memberStorage > 0 ? "bg-stone-200" : "bg-stone-200/50") 
-                              : (memberStorage > 0 ? "bg-stone-800" : "bg-stone-950/40")
-                          )}>
-                            <div 
-                              className={cn(
-                                "absolute top-0 left-0 h-full transition-all duration-500",
-                                isMax || isHeavy
-                                  ? "bg-red-500"
-                                  : isWarning
-                                    ? "bg-amber-500"
-                                    : isNoticeable
-                                      ? (theme === 'light' ? "bg-stone-500" : "bg-stone-400")
-                                      : (theme === 'light' ? "bg-stone-300" : "bg-stone-700")
-                              )}
-                              style={{ width: `${clampedProgress}%` }}
-                            />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className={cn("text-sm truncate font-medium", theme === 'light' ? "text-stone-900" : "text-stone-300")}>
+                              {member.name?.trim() || member.email || 'Unnamed Member'}
+                            </span>
+                            {(member.memberType || member.member_type) === 'pribadi' && (
+                              <span className={cn(
+                                "px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest rounded shrink-0",
+                                theme === 'light' ? "bg-stone-200 text-stone-700" : "bg-stone-800 text-stone-300"
+                              )}>
+                                Pribadi
+                              </span>
+                            )}
                           </div>
+                          {member.email && member.name?.trim() && (
+                            <div className="text-[10px] text-stone-400 dark:text-stone-500 font-mono truncate mt-0.5">
+                              {member.email}
+                            </div>
+                          )}
+                          {(member.memberType || member.member_type) !== 'pribadi' && (member.expiryDate || member.expiry_date) && (
+                            <div className="flex items-center gap-1.5 mt-1">
+                              <span className="text-[9px] uppercase tracking-wider font-semibold opacity-50">Sisa:</span>
+                              {(() => {
+                                const days = getDaysRemaining(member.expiryDate || member.expiry_date);
+                                const status = getExpiryStatus(days);
+                                return (
+                                  <span className={cn(
+                                    "px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm shrink-0",
+                                    status.color === 'red' ? "bg-red-500/15 text-red-600 dark:text-red-400" :
+                                    status.color === 'yellow' ? "bg-amber-500/15 text-amber-600 dark:text-amber-400" :
+                                    status.color === 'green' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" :
+                                    "bg-stone-500/15 text-stone-600 dark:text-stone-400"
+                                  )}>
+                                    {status.text} ({new Date(member.expiryDate || member.expiry_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })})
+                                  </span>
+                                );
+                              })()}
+                            </div>
+                          )}
                         </div>
                       </div>
-                      <div className="flex items-center gap-3 shrink-0 ml-2">
-                        <span className={cn(
-                          "text-[10px] font-mono px-1.5 py-0.5 rounded-sm transition-colors duration-300",
-                          isMax
-                            ? (theme === 'light'
-                                ? "bg-red-100 text-red-800 font-bold border-2 border-red-300 shadow-sm"
-                                : "bg-red-900/50 text-red-200 font-bold border-2 border-red-700 shadow-sm")
-                            : isHeavy
-                              ? (theme === 'light' 
-                                  ? "bg-red-50 text-red-700 font-bold border border-red-200" 
-                                  : "bg-red-950/30 text-red-400 font-bold border border-red-900/50")
-                              : isWarning
-                                ? (theme === 'light' 
-                                    ? "bg-amber-50 text-amber-700 font-semibold border border-amber-200" 
-                                    : "bg-amber-950/30 text-amber-400 font-semibold border border-amber-900/50")
-                                : isNoticeable
-                                  ? (theme === 'light' 
-                                      ? "bg-stone-100 text-stone-700 font-medium" 
-                                      : "bg-stone-800 text-stone-300 font-medium")
-                                  : "text-stone-400 dark:text-stone-600 font-normal"
-                        )}>
-                          {formattedStorage}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => onEditMember?.(family.id, member)}
-                            className="text-stone-400 hover:text-gold-500 transition-colors p-1"
-                            title="Edit member"
-                          >
-                            <Pencil className="w-3.5 h-3.5" />
-                          </button>
-                          <button
-                            onClick={() => onRemoveMember(family.id, member.id)}
-                            className="text-stone-400 hover:text-wine transition-colors p-1"
-                            title="Remove member"
-                          >
-                            <X className="w-4 h-4" />
-                          </button>
-                        </div>
+                      <div className="flex items-center gap-1 shrink-0 ml-2">
+                        <button
+                          onClick={() => onEditMember?.(family.id, member)}
+                          aria-label="Edit member"
+                          className="text-stone-400 hover:text-gold-500 transition-colors p-1"
+                          title="Edit member"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => onRemoveMember(family.id, member.id)}
+                          aria-label="Remove member"
+                          className="text-stone-400 hover:text-wine transition-colors p-1"
+                          title="Remove member"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   );

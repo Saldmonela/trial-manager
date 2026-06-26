@@ -1,22 +1,27 @@
 import React from 'react';
-import { Plus, Sparkles, Sun, Moon, Inbox, Settings } from 'lucide-react';
+import { useLocation } from 'react-router-dom';
+import { Plus, Sparkles, Sun, Moon, Inbox, Settings, HardDrive, RefreshCw } from 'lucide-react';
 import { cn } from '../../utils';
 
 export default function DashboardHeader({
   theme,
   t,
   language,
-  onLogout,
   onShowTutorial,
   onToggleLanguage,
   onToggleTheme,
   onOpenAddFamily,
   onOpenJoinRequests,
   onOpenSettings,
+  onOpenStorage,
+  onSyncAllDrives,
   pendingCount = 0,
   publicMode = false,
   session = null,
 }) {
+  const location = useLocation();
+  const isStorageActive = location.pathname.startsWith('/storage');
+
   return (
     <header
       className={cn(
@@ -80,6 +85,7 @@ export default function DashboardHeader({
 
           <button
             onClick={onToggleLanguage}
+            title={language === 'en' ? 'Switch to Indonesian' : 'Switch to English'}
             className={cn(
               'p-0 w-10 h-10 md:w-8 md:h-8 hidden md:flex items-center justify-center rounded-full transition-colors border text-[10px] font-bold',
               theme === 'light'
@@ -92,8 +98,10 @@ export default function DashboardHeader({
 
           <button
             onClick={onToggleTheme}
+            aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+            title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
             className={cn(
-              'p-3 md:p-2 rounded-full transition-colors',
+              'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
               theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
             )}
           >
@@ -103,8 +111,9 @@ export default function DashboardHeader({
           {/* Settings gear — available in both admin and public */}
           <button
             onClick={() => onOpenSettings?.()}
+            aria-label="Settings"
             className={cn(
-              'p-3 md:p-2 rounded-full transition-colors flex items-center justify-center',
+              'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
               theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
             )}
             title="Settings"
@@ -116,16 +125,49 @@ export default function DashboardHeader({
           {!publicMode && (
             <>
               <button
-                onClick={onOpenJoinRequests}
+                onClick={() => onOpenStorage?.()}
+                aria-label="Cloud storage"
+                aria-current={isStorageActive ? 'page' : undefined}
                 className={cn(
-                  'relative p-3 md:p-2 rounded-full transition-colors flex items-center justify-center',
+                  'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
+                  isStorageActive
+                    ? (theme === 'light' ? 'bg-stone-200 text-gold-600' : 'bg-stone-800 text-gold-400')
+                    : (theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400')
+                )}
+                title="Cloud Storage"
+              >
+                <HardDrive className="w-5 h-5" />
+              </button>
+
+              {onSyncAllDrives && (
+                <button
+                  onClick={() => onSyncAllDrives()}
+                  aria-label="Sync all Google Drives"
+                  className={cn(
+                    'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors hidden md:flex items-center justify-center shrink-0',
+                    theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
+                  )}
+                  title="Sync All Google Drives"
+                >
+                  <RefreshCw className="w-5 h-5" />
+                </button>
+              )}
+
+              <button
+                onClick={onOpenJoinRequests}
+                aria-label={pendingCount > 0 ? `Join requests, ${pendingCount} pending` : 'Join requests'}
+                className={cn(
+                  'relative p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
                   theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
                 )}
                 title="Join Requests"
               >
                 <Inbox className="w-5 h-5" />
                 {pendingCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 animate-pulse shadow-sm">
+                  <span className={cn(
+                    'absolute top-0 right-0 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-sm ring-2 animate-pulse',
+                    theme === 'light' ? 'ring-stone-50' : 'ring-stone-950'
+                  )}>
                     {pendingCount > 99 ? '99+' : pendingCount}
                   </span>
                 )}
@@ -135,12 +177,12 @@ export default function DashboardHeader({
                 id="tour-new-family"
                 onClick={onOpenAddFamily}
                 className={cn(
-                  'flex items-center gap-2 px-4 py-3 md:px-6 md:py-2.5 font-medium rounded-none transition-all shadow-sm text-sm md:text-base whitespace-nowrap min-h-[44px]',
+                  'flex items-center justify-center gap-2 transition-all shadow-sm font-medium whitespace-nowrap rounded-full md:rounded-none w-10 h-10 md:w-auto md:h-auto md:px-6 md:py-2.5 min-h-[40px] md:min-h-[44px] shrink-0',
                   theme === 'light' ? 'bg-stone-900 text-stone-50 hover:bg-stone-800' : 'bg-stone-50 text-stone-900 hover:bg-stone-200'
                 )}
               >
                 <Plus className="w-5 h-5 md:w-4 md:h-4" />
-                {t('dashboard.new_family')}
+                <span className="hidden md:inline">{t('dashboard.new_family')}</span>
               </button>
             </>
           )}

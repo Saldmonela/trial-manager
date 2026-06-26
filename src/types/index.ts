@@ -13,6 +13,10 @@ export interface Member {
   addedAt?: string;
   storage_used?: number;
   storageUsed?: number;
+  member_type?: 'pribadi' | 'pembeli';
+  memberType?: 'pribadi' | 'pembeli';
+  expiry_date?: string | null;
+  expiryDate?: string | null;
 }
 
 export type ProductType = 'slot' | 'account_ready' | 'account_custom';
@@ -181,4 +185,53 @@ export interface AuthContextValue {
   isLoading: boolean;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+}
+
+// ─── Cloud Storage (Connected Accounts) ──────────────────────────
+// Modul multi-cloud storage v1: hubungkan akun Google Drive & sync kuota asli.
+
+export type StorageProvider = 'google_drive' | 's3';
+export type ConnectedAccountStatus = 'connected' | 'disconnected';
+
+/**
+ * Satu akun cloud terhubung milik user. Bentuk camelCase yang aman untuk client —
+ * TIDAK pernah memuat field token (kolom token di-REVOKE dari client di DB).
+ */
+export interface ConnectedAccount {
+  id: string;
+  provider: StorageProvider;
+  providerAccountId: string;
+  email: string | null;
+  displayName: string | null;
+  avatarUrl: string | null;
+  status: ConnectedAccountStatus;
+  /** null = unlimited (Google tidak mengirim `limit`) */
+  totalBytes: number | null;
+  usedBytes: number;
+  availableBytes: number | null;
+  trashBytes: number;
+  lastSyncedAt: string | null;
+  createdAt?: string;
+}
+
+/** Ringkasan kuota gabungan dari semua akun terhubung. */
+export interface StorageAggregate {
+  /** Jumlah total dari akun yang berhingga saja (akun unlimited dikecualikan). */
+  totalBytes: number;
+  usedBytes: number;
+  availableBytes: number;
+  accountCount: number;
+  hasUnlimited: boolean;
+}
+
+export interface UseConnectedAccountsReturn {
+  accounts: ConnectedAccount[];
+  aggregate: StorageAggregate;
+  loading: boolean;
+  error: string | null;
+  connectGoogleDrive: () => Promise<ActionResult>;
+  syncQuota: (id: string) => Promise<ActionResult>;
+  syncAll: () => Promise<ActionResult>;
+  disconnect: (id: string) => Promise<ActionResult>;
+  refetch: () => Promise<void>;
 }

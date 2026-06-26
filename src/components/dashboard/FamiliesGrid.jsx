@@ -1,12 +1,15 @@
 import React from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Crown, Plus } from 'lucide-react';
+import { Crown, Plus, SearchX } from 'lucide-react';
 import { cn } from '../../utils';
 import FamilyCardAdmin from '../family/FamilyCardAdmin';
 
 export default function FamiliesGrid({
   theme,
+  t,
   sortedFamilies,
+  hasAnyFamilies = false,
+  onClearFilters,
   onOpenAddFamily,
   onDelete,
   onEdit,
@@ -22,8 +25,50 @@ export default function FamiliesGrid({
   highlightedFamilyId = null,
   forceExpandFamilyId = null,
   highlightedEmail = null,
+  connectedAccounts = [],
+  onConnectDrive,
+  onSyncDrive,
+  onDisconnectDrive,
 }) {
   if (sortedFamilies.length === 0) {
+    if (hasAnyFamilies) {
+      return (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className={cn(
+            'relative text-center py-20 px-8 border border-dashed',
+            theme === 'light' ? 'bg-stone-50 border-stone-300' : 'bg-stone-900/40 border-stone-800'
+          )}
+        >
+          <div className="relative z-10 flex flex-col items-center">
+            <div className={cn(
+              'w-16 h-16 mb-6 flex items-center justify-center border-2',
+              theme === 'light' ? 'border-stone-200 bg-white text-stone-400' : 'border-stone-700 bg-stone-900 text-stone-500'
+            )}>
+              <SearchX className="w-7 h-7" />
+            </div>
+            <h3 className={cn('text-2xl font-serif font-bold mb-3 tracking-tight', theme === 'light' ? 'text-stone-900' : 'text-stone-50')}>
+              {t ? t('dashboard.no_match.title') : 'No families match'}
+            </h3>
+            <p className={cn('max-w-sm mx-auto mb-8 text-sm', theme === 'light' ? 'text-stone-500' : 'text-stone-400')}>
+              {t ? t('dashboard.no_match.description') : 'Try adjusting your search terms or filters.'}
+            </p>
+            {onClearFilters && (
+              <button
+                onClick={onClearFilters}
+                className={cn(
+                  'inline-flex items-center gap-2 px-6 py-3 font-bold rounded-none text-[10px] uppercase tracking-[0.2em] transition-all hover:-translate-y-0.5 border',
+                  theme === 'light' ? 'border-stone-300 text-stone-700 hover:bg-stone-100' : 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                )}
+              >
+                {t ? t('dashboard.no_match.reset') : 'Reset filters'}
+              </button>
+            )}
+          </div>
+        </motion.div>
+      );
+    }
     return (
       <motion.div
         initial={{ opacity: 0, y: 20 }}
@@ -97,6 +142,10 @@ export default function FamiliesGrid({
             isHighlighted={family.id === highlightedFamilyId}
             forceExpand={family.id === forceExpandFamilyId}
             highlightedEmail={family.id === highlightedFamilyId ? highlightedEmail : null}
+            connectedAccounts={connectedAccounts}
+            onConnectDrive={onConnectDrive}
+            onSyncDrive={onSyncDrive}
+            onDisconnectDrive={onDisconnectDrive}
           />
         ))}
       </AnimatePresence>

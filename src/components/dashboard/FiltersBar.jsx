@@ -23,31 +23,30 @@ export default function FiltersBar({
       style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}
     >
       <div className="flex flex-wrap items-center gap-6">
-        <div className="flex gap-6">
+        <div className="flex flex-wrap gap-x-6 gap-y-2">
           {[
             { key: 'available', label: t('dashboard.filters.available') },
             { key: 'full', label: t('dashboard.filters.full') },
+            { key: 'expiring', label: t('dashboard.filters.expiring_soon') },
             { key: 'all', label: t('dashboard.filters.all') },
           ].map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
               className={cn(
-                'text-sm font-medium transition-all duration-300 relative py-2',
+                'text-sm transition-all duration-300 relative py-2',
                 filter === f.key
-                  ? theme === 'light'
-                    ? 'text-stone-900'
-                    : 'text-stone-50'
-                  : theme === 'light'
-                    ? 'text-stone-400 hover:text-stone-600'
-                    : 'text-stone-600 hover:text-stone-400'
+                  ? cn('font-semibold', theme === 'light' ? 'text-stone-900' : 'text-stone-50')
+                  : cn('font-medium', theme === 'light'
+                      ? 'text-stone-400 hover:text-stone-600'
+                      : 'text-stone-600 hover:text-stone-400')
               )}
             >
               {f.label}
               {filter === f.key && (
                 <motion.div
                   layoutId="activeFilter"
-                  className={cn('absolute bottom-0 left-0 right-0 h-0.5', theme === 'light' ? 'bg-stone-900' : 'bg-gold-500')}
+                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold-500"
                 />
               )}
             </button>
