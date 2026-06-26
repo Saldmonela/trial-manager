@@ -11,6 +11,7 @@ import DashboardAdmin from './components/DashboardAdmin';
 import LandingPage from './components/LandingPage';
 import LoginPage from './components/auth/LoginPage';
 import AdminRoute from './components/auth/AdminRoute';
+import StoragePage from './components/storage/StoragePage';
 
 function App() {
   const { session, user, isAdmin, isLoading, signInWithGoogle, signOut } = useAuth();
@@ -44,6 +45,11 @@ function App() {
         <Route path="/admin" element={
           <AdminRoute>
             <DashboardAdmin key={user?.id} onLogout={signOut} />
+          </AdminRoute>
+        } />
+        <Route path="/storage" element={
+          <AdminRoute>
+            <StoragePage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/" replace />} />

@@ -12,7 +12,19 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
     name: '',
     email: '',
     storageUsed: '',
+    memberType: 'pembeli',
+    expiryDate: '',
   });
+
+  const formatDate = (isoString) => {
+    if (!isoString) return '';
+    const date = new Date(isoString);
+    if (Number.isNaN(date.getTime())) return '';
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   useEffect(() => {
     if (member) {
@@ -20,9 +32,20 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
         name: member.name || '',
         email: member.email || '',
         storageUsed: member.storageUsed !== undefined ? String(member.storageUsed) : String(member.storage_used || ''),
+        memberType: member.memberType || member.member_type || 'pembeli',
+        expiryDate: formatDate(member.expiryDate || member.expiry_date),
       });
     }
   }, [member]);
+
+  const setExpiryPreset = (months) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + months);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    setFormData((prev) => ({ ...prev, expiryDate: `${year}-${month}-${day}` }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -32,6 +55,8 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
       name: formData.name,
       email: formData.email,
       storageUsed: Number(formData.storageUsed) || 0,
+      memberType: formData.memberType,
+      expiryDate: formData.memberType === 'pribadi' ? null : (formData.expiryDate || null),
     });
 
     onClose();
@@ -69,6 +94,49 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
           }}
           placeholder="0"
         />
+
+        <FormField
+          label="Tipe Anggota"
+          value={formData.memberType}
+          onChange={(e) => setFormData({ ...formData, memberType: e.target.value })}
+          type="select"
+          options={[
+            { value: 'pembeli', label: 'Akun Pembeli (Buyer)' },
+            { value: 'pribadi', label: 'Akun Pribadi (Personal)' },
+          ]}
+        />
+
+        {formData.memberType === 'pembeli' && (
+          <div className="space-y-2">
+            <FormField
+              label="Expired Date"
+              type="date"
+              value={formData.expiryDate}
+              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+            />
+            <div className="flex gap-2 justify-start mt-1">
+              {[
+                { label: '+1 Bulan', months: 1 },
+                { label: '+3 Bulan', months: 3 },
+                { label: '+6 Bulan', months: 6 },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => setExpiryPreset(p.months)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-semibold uppercase tracking-wider border transition-colors cursor-pointer",
+                    theme === 'light'
+                      ? "border-stone-200 hover:bg-stone-100 text-stone-700 bg-transparent"
+                      : "border-stone-800 hover:bg-stone-850 text-stone-300 bg-transparent"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           type="submit"

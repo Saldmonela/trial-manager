@@ -1,0 +1,16 @@
+# Supabase CLI config. Ganti project_id dengan ref project kamu (Dashboard -> Settings -> General).
+# Jalankan: supabase link --project-ref <ref> (akan menulis nilai yang benar).
+project_id = "your-project-ref"
+
+# Edge Functions — verify_jwt:
+#   connect-url & sync-quota  : true  (dipanggil frontend authed; gateway memverifikasi JWT user)
+#   oauth-callback            : false (di-hit oleh redirect Google tanpa JWT; identitas via oauth_states)
+
+[functions.drive-connect-url]
+verify_jwt = true
+
+[functions.drive-sync-quota]
+verify_jwt = true
+
+[functions.drive-oauth-callback]
+verify_jwt = false

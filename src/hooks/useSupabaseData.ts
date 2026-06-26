@@ -482,6 +482,8 @@ export function useSupabaseData(): UseSupabaseDataReturn {
               ...m,
               addedAt: m.added_at,
               storageUsed: Number(m.storage_used) || 0,
+              memberType: m.member_type || 'pembeli',
+              expiryDate: m.expiry_date || null,
             })),
           } as Family;
         })
@@ -602,9 +604,11 @@ export function useSupabaseData(): UseSupabaseDataReturn {
   }
 
   async function addMember(familyId: string, member: Omit<Member, 'family_id'>): Promise<ActionResult> {
-    const { id, name, email, addedAt, storageUsed, storage_used } = member;
+    const { id, name, email, addedAt, storageUsed, storage_used, memberType, member_type, expiryDate, expiry_date } = member;
     const previousFamilies = families;
     const initialStorageUsed = Number(storageUsed ?? storage_used) || 0;
+    const type = memberType ?? member_type ?? 'pembeli';
+    const expDate = expiryDate ?? expiry_date ?? null;
     try {
       setFamilies((prev) =>
         prev.map((f) => {
@@ -612,7 +616,9 @@ export function useSupabaseData(): UseSupabaseDataReturn {
             const newMember = { 
               ...member, 
               storageUsed: initialStorageUsed,
-              storage_used: initialStorageUsed 
+              storage_used: initialStorageUsed,
+              memberType: type,
+              expiryDate: expDate
             } as Member;
             return { ...f, members: [...(f.members || []), newMember] };
           }
@@ -628,7 +634,9 @@ export function useSupabaseData(): UseSupabaseDataReturn {
           name, 
           email, 
           added_at: addedAt,
-          storage_used: initialStorageUsed
+          storage_used: initialStorageUsed,
+          member_type: type,
+          expiry_date: expDate
         }]);
       if (error) throw error;
       return { success: true };
@@ -676,7 +684,9 @@ export function useSupabaseData(): UseSupabaseDataReturn {
                       ...m, 
                       ...updatedFields, 
                       storageUsed: updatedFields.storageUsed !== undefined ? Number(updatedFields.storageUsed) : m.storageUsed,
-                      storage_used: updatedFields.storageUsed !== undefined ? Number(updatedFields.storageUsed) : (updatedFields.storage_used !== undefined ? Number(updatedFields.storage_used) : m.storage_used)
+                      storage_used: updatedFields.storageUsed !== undefined ? Number(updatedFields.storageUsed) : (updatedFields.storage_used !== undefined ? Number(updatedFields.storage_used) : m.storage_used),
+                      memberType: updatedFields.memberType !== undefined ? updatedFields.memberType : (updatedFields.member_type !== undefined ? updatedFields.member_type : m.memberType),
+                      expiryDate: updatedFields.expiryDate !== undefined ? updatedFields.expiryDate : (updatedFields.expiry_date !== undefined ? updatedFields.expiry_date : m.expiryDate)
                     } 
                   : m
               ),
@@ -694,6 +704,10 @@ export function useSupabaseData(): UseSupabaseDataReturn {
       if (updatedFields.email !== undefined) payload.email = updatedFields.email;
       if (updatedFields.storageUsed !== undefined) payload.storage_used = Number(updatedFields.storageUsed) || 0;
       else if (updatedFields.storage_used !== undefined) payload.storage_used = Number(updatedFields.storage_used) || 0;
+      if (updatedFields.memberType !== undefined) payload.member_type = updatedFields.memberType;
+      else if (updatedFields.member_type !== undefined) payload.member_type = updatedFields.member_type;
+      if (updatedFields.expiryDate !== undefined) payload.expiry_date = updatedFields.expiryDate;
+      else if (updatedFields.expiry_date !== undefined) payload.expiry_date = updatedFields.expiry_date;
 
       const { error } = await supabase
         .from('members')

@@ -4,6 +4,11 @@ import React from 'react';
 import Dashboard from '../Dashboard';
 
 // Mock dependencies
+vi.mock('react-router-dom', () => ({
+  useNavigate: () => vi.fn(),
+  useSearchParams: () => [new URLSearchParams(), vi.fn()],
+}));
+
 vi.mock('../../context/ThemeContext', () => ({
   useTheme: () => ({ theme: 'light', toggleTheme: vi.fn() }),
 }));
@@ -18,6 +23,19 @@ vi.mock('../../context/LanguageContext', () => ({
 
 vi.mock('../../hooks/useToast', () => ({
   useToast: () => ({ toasts: [], addToast: vi.fn(), removeToast: vi.fn() }),
+}));
+
+vi.mock('../../hooks/useConnectedAccounts', () => ({
+  useConnectedAccounts: () => ({
+    accounts: [],
+    loading: false,
+    error: null,
+    connectGoogleDrive: vi.fn(),
+    syncQuota: vi.fn(),
+    syncAll: vi.fn(),
+    disconnect: vi.fn(),
+    refetch: vi.fn(),
+  }),
 }));
 
 vi.mock('../../hooks/useLocalStorage', () => ({

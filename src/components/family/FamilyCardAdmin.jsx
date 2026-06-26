@@ -17,6 +17,10 @@ export default function FamilyCardAdmin({
   isHighlighted = false,
   forceExpand = false,
   highlightedEmail = null,
+  connectedAccounts = [],
+  onConnectDrive,
+  onSyncDrive,
+  onDisconnectDrive,
 }) {
   return (
     <FamilyCard
@@ -35,6 +39,10 @@ export default function FamilyCardAdmin({
       isHighlighted={isHighlighted}
       forceExpand={forceExpand}
       highlightedEmail={highlightedEmail}
+      connectedAccounts={connectedAccounts}
+      onConnectDrive={onConnectDrive}
+      onSyncDrive={onSyncDrive}
+      onDisconnectDrive={onDisconnectDrive}
     />
   );
 }

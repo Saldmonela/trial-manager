@@ -13,7 +13,18 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
     name: '',
     email: '',
     storageUsed: '',
+    memberType: 'pembeli',
+    expiryDate: '',
   });
+
+  const setExpiryPreset = (months) => {
+    const date = new Date();
+    date.setMonth(date.getMonth() + months);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    setFormData((prev) => ({ ...prev, expiryDate: `${year}-${month}-${day}` }));
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -25,9 +36,11 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
       email: formData.email,
       storageUsed: Number(formData.storageUsed) || 0,
       addedAt: new Date().toISOString(),
+      memberType: formData.memberType,
+      expiryDate: formData.memberType === 'pribadi' ? null : (formData.expiryDate || null),
     });
     
-    setFormData({ name: '', email: '', storageUsed: '' });
+    setFormData({ name: '', email: '', storageUsed: '', memberType: 'pembeli', expiryDate: '' });
     onClose();
   };
 
@@ -63,6 +76,49 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
           }}
           placeholder="0"
         />
+
+        <FormField
+          label="Tipe Anggota"
+          value={formData.memberType}
+          onChange={(e) => setFormData({ ...formData, memberType: e.target.value })}
+          type="select"
+          options={[
+            { value: 'pembeli', label: 'Akun Pembeli (Buyer)' },
+            { value: 'pribadi', label: 'Akun Pribadi (Personal)' },
+          ]}
+        />
+
+        {formData.memberType === 'pembeli' && (
+          <div className="space-y-2">
+            <FormField
+              label="Expired Date"
+              type="date"
+              value={formData.expiryDate}
+              onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
+            />
+            <div className="flex gap-2 justify-start mt-1">
+              {[
+                { label: '+1 Bulan', months: 1 },
+                { label: '+3 Bulan', months: 3 },
+                { label: '+6 Bulan', months: 6 },
+              ].map((p) => (
+                <button
+                  key={p.label}
+                  type="button"
+                  onClick={() => setExpiryPreset(p.months)}
+                  className={cn(
+                    "px-3 py-1.5 text-xs font-semibold uppercase tracking-wider border transition-colors cursor-pointer",
+                    theme === 'light'
+                      ? "border-stone-200 hover:bg-stone-100 text-stone-700 bg-transparent"
+                      : "border-stone-800 hover:bg-stone-850 text-stone-300 bg-transparent"
+                  )}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
 
         <button
           type="submit"

@@ -58,7 +58,7 @@ export default function MetricsRow({
             <div
               key={idx}
               className={cn(
-                'p-6 border-b border-r flex flex-col justify-between aspect-[4/3] group transition-all duration-500 relative overflow-hidden',
+                'p-4 md:p-6 border-b border-r flex flex-col justify-between aspect-[4/3] group transition-all duration-500 relative overflow-hidden',
                 theme === 'light' ? 'border-stone-200' : 'border-stone-800',
                 statusTheme.bg || (theme === 'light' ? 'hover:bg-stone-50' : 'hover:bg-stone-900/50')
               )}

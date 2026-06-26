@@ -27,3 +27,13 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch / debug files (may contain hardcoded secrets)
+scratch_*.js
+
+# Supabase CLI local state (contains project ref, org info)
+supabase/.temp/
+
+# Planning docs (optional — remove these lines if you want them in repo)
+INTEGRATION_PLAN_*.md
+prd_*.md

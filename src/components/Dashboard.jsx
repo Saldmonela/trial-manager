@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
@@ -6,6 +7,7 @@ import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../lib/family
 import { useLocalStorage } from '../hooks/useLocalStorage';
 import { getUpgradeServiceObject } from '../lib/upgradeService';
 import { useSupabaseData, useAppSetting, updateSetting, useJoinRequests } from '../hooks/useSupabaseData';
+import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
 import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
 import { useTheme } from '../context/ThemeContext';
@@ -32,6 +34,7 @@ import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
 export default function Dashboard({ onLogout }) {
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { session } = useAuth();
   const { t, language, toggleLanguage } = useLanguage();
@@ -50,6 +53,59 @@ export default function Dashboard({ onLogout }) {
   const { joinRequests: allOrders, refetch: refetchOrders, updateStatus } = useJoinRequests();
   const { toasts, addToast, removeToast } = useToast();
   const pendingCount = useMemo(() => allOrders.filter(r => r.status === 'pending').length, [allOrders]);
+
+  // --- Google Drive integration (kuota asli di kartu) ---
+  const {
+    accounts: connectedAccounts,
+    syncQuota,
+    syncAll,
+    disconnect: disconnectDrive,
+    refetch: refetchAccounts,
+  } = useConnectedAccounts();
+  const [searchParams] = useSearchParams();
+  const driveParamHandled = useRef(false);
+
+  // Tangani redirect balik dari OAuth (mendarat di /admin saat connect dari kartu).
+  useEffect(() => {
+    const ok = searchParams.get('drive_connected');
+    const err = searchParams.get('drive_error');
+    if ((!ok && !err) || driveParamHandled.current) return;
+    driveParamHandled.current = true;
+    if (ok) {
+      addToast('Google Drive berhasil terhubung', 'success');
+      void refetchAccounts();
+    } else {
+      addToast(`Gagal menghubungkan Drive: ${err}`, 'error');
+    }
+    navigate('/admin', { replace: true });
+  }, [searchParams, addToast, refetchAccounts, navigate]);
+
+  const handleConnectDrive = useCallback(async (email) => {
+    if (!supabase) return;
+    const { data, error } = await supabase.functions.invoke('drive-connect-url', {
+      body: { redirectTo: '/admin', origin: window.location.origin, loginHint: email || '' },
+    });
+    if (error || !data?.url) {
+      addToast('Tidak bisa memulai koneksi Drive', 'error');
+      return;
+    }
+    window.location.href = data.url;
+  }, [addToast]);
+
+  const handleSyncDrive = useCallback(async (id) => {
+    const r = await syncQuota(id);
+    addToast(r.success ? 'Quota Drive ter-sync' : (r.error || 'Sync gagal'), r.success ? 'success' : 'error');
+  }, [syncQuota, addToast]);
+
+  const handleDisconnectDrive = useCallback(async (id) => {
+    const r = await disconnectDrive(id);
+    addToast(r.success ? 'Drive terputus' : (r.error || 'Gagal memutus Drive'), r.success ? 'success' : 'error');
+  }, [disconnectDrive, addToast]);
+
+  const handleSyncAllDrives = useCallback(async () => {
+    const r = await syncAll();
+    addToast(r.success ? 'Semua Drive ter-sync' : (r.error || 'Sync gagal'), r.success ? 'success' : 'error');
+  }, [syncAll, addToast]);
 
   // Group pending orders by familyId for inline display on cards
   const pendingOrdersByFamily = useMemo(() => {
@@ -71,7 +127,7 @@ export default function Dashboard({ onLogout }) {
   const [deleteMemberData, setDeleteMemberData] = useState(null);
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
-  const [showBanned, setShowBanned] = useState(true);
+  const [showBanned, setShowBanned] = useState(false);
   const [sortBy, setSortBy] = useState('created');
   const [sortDirection, setSortDirection] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -151,6 +207,15 @@ export default function Dashboard({ onLogout }) {
 
     families.forEach((family) => {
       if (!showBanned && (family.isBanned || family.is_banned)) return;
+
+      if (family.name?.toLowerCase().includes(query)) {
+        results.push({
+          familyId: family.id,
+          familyName: family.name || 'Family Plan',
+          role: 'Family',
+          email: family.name || 'Family Plan',
+        });
+      }
 
       if (family.ownerEmail?.toLowerCase().includes(query)) {
         results.push({
@@ -321,6 +386,10 @@ export default function Dashboard({ onLogout }) {
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
       if (filter === 'available') return !isFamilyFull(f);
+      if (filter === 'expiring') {
+        const days = getDaysRemaining(f.expiryDate);
+        return days !== null && days >= 0 && days <= 7;
+      }
       return true;
     });
 
@@ -401,6 +470,8 @@ export default function Dashboard({ onLogout }) {
         onOpenAddFamily={() => setIsAddFamilyOpen(true)}
         onOpenJoinRequests={() => setIsJoinRequestsOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenStorage={() => navigate('/storage')}
+        onSyncAllDrives={handleSyncAllDrives}
         pendingCount={pendingCount}
       />
 
@@ -533,9 +604,11 @@ export default function Dashboard({ onLogout }) {
                             >
                               {result.role}
                             </span>
-                            <span className={cn('text-xs font-serif italic', theme === 'light' ? 'text-stone-400' : 'text-stone-600')}>
-                              in {result.familyName}
-                            </span>
+                            {result.role !== 'Family' && (
+                              <span className={cn('text-xs font-serif italic', theme === 'light' ? 'text-stone-400' : 'text-stone-600')}>
+                                in {result.familyName}
+                              </span>
+                            )}
                           </div>
                         </div>
                       ))}
@@ -594,7 +667,13 @@ export default function Dashboard({ onLogout }) {
 
         <FamiliesGrid
           theme={theme}
+          t={t}
           sortedFamilies={sortedFamilies}
+          hasAnyFamilies={families.length > 0}
+          onClearFilters={() => {
+            setFilter('all');
+            setShowBanned(false);
+          }}
           onOpenAddFamily={() => setIsAddFamilyOpen(true)}
           onDelete={handleDeleteFamily}
           onEdit={setEditFamily}
@@ -632,6 +711,10 @@ export default function Dashboard({ onLogout }) {
           highlightedFamilyId={activeHighlight.familyId}
           forceExpandFamilyId={activeHighlight.expand ? activeHighlight.familyId : null}
           highlightedEmail={activeHighlight.matchedEmail}
+          connectedAccounts={connectedAccounts}
+          onConnectDrive={handleConnectDrive}
+          onSyncDrive={handleSyncDrive}
+          onDisconnectDrive={handleDisconnectDrive}
         />
       </main>
 
