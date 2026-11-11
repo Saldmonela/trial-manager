@@ -75,7 +75,7 @@ export default function MetricsRow({
                 <span
                   className={cn(
                     'text-[10px] uppercase tracking-[0.2em] font-bold transition-colors',
-                    statusTheme.bg ? statusTheme.text : theme === 'light' ? 'text-stone-400' : 'text-stone-500'
+                    statusTheme.bg ? statusTheme.text : theme === 'light' ? 'text-stone-500' : 'text-stone-400'
                   )}
                 >
                   {stat.label}
@@ -84,7 +84,7 @@ export default function MetricsRow({
                 <div className="flex flex-col gap-1">
                   <span
                     className={cn(
-                      'font-serif text-3xl lg:text-5xl font-bold tracking-tighter break-all transition-colors',
+                      'font-serif tabular-nums text-3xl lg:text-5xl font-bold tracking-tighter break-all transition-colors',
                       statusTheme.text
                     )}
                   >

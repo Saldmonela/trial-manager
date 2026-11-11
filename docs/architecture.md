@@ -1,79 +1,37 @@
-# Architecture Overview
+# Architecture
 
-## Technology Stack
+React/Vite renders admin routes only (`/login`, `/admin`, `/storage`). Supabase Auth provides sessions;
+profiles.role is the authoritative server-checked admin role. New profiles default to
+public; clients cannot insert profiles or change roles.
 
-The **Trial-Manager** application is built using a modern, performance-focused stack:
+SQL migrations enforce shared admin metadata access, owner-scoped Drive connections,
+member capacity, email uniqueness, immutable order price snapshots and transactionally
+consistent approvals. Direct anonymous member/order reads and writes are closed.
 
-- **Frontend Framework**: [React 19](https://react.dev/)
-- **Build Tool**: [Vite 7](https://vitejs.dev/)
-- **Styling**: [Tailwind CSS 4](https://tailwindcss.com/)
-- **Backend / Database**: [Supabase](https://supabase.com/) (PostgreSQL)
-- **Language**: JavaScript / TypeScript (Hybrid)
+The public storefront is retired. Its catalogue, order-creation, status-lookup and
+status-code RPCs remain in the schema with their data, but are executable by
+service_role only; their Edge Functions and UI are deleted. Admin order RPCs
+(payment, transition, settings) still exist and are admin-checked, but nothing in the
+frontend calls them. Definer functions use an empty search_path and schema-qualified tables.
+Privileged operator functions also check the current admin inside the transaction.
 
-## Application Structure
+Family list payloads never contain password ciphertext or plaintext. Credential writes,
+strict legacy reads and explicit migrations execute on the server, and their SQL
+functions are service_role only; the browser has no direct-database fallback. New ciphertext uses
+a dedicated 256-bit key, a version prefix and family-specific AES-GCM AAD. Legacy owner
+UUIDs and original bytes remain preserved for controlled recovery.
 
-The application follows a component-based architecture with a clear separation of concerns:
+Drive callback is public and forwards authorization code/state to a trusted frontend
+fragment without linking an account. Completion requires the initiating admin and
+browser nonce, then consumes state atomically. Sync and disconnect enforce connection
+ownership and inspect every database write/provider result. Temporary provider failures
+do not disconnect accounts; revocation failures do not hide an active grant.
 
-- **`src/components/`**: Reusable UI components and feature-specific logic.
-- **`src/context/`**: Global state management (Theme, Language).
-- **`src/hooks/`**: Custom React hooks for data fetching and logic reuse (`useSupabaseData`, `useLocalStorage`).
-- **`src/lib/`**: Core utilities and helper functions.
-- **`src/pages/`** (implied): Top-level route components (e.g., `Dashboard`, `LoginPage`).
+Forms await structured action results, retain failed input, and stay mounted during
+metadata refresh. Realtime
+does not publish credential/token tables. Quotas are shown per account until shared pool
+semantics are verified.
 
-## Authentication Flow
-
-Authentication is handled via **Supabase Auth**.
-
-1. **Login**: Users authenticate using their email and password via `LoginPage.jsx`.
-2. **Session persistence**: Supabase client (`src/supabaseClient.js`) manages the session automatically.
-3. **Route Protection**: The `ProtectedRoute.jsx` component wraps private routes (like the Dashboard), checking for an active session before rendering content. If no session exists, it redirects to the login page.
-
-## State Management
-
-The application uses a hybrid state management approach:
-
-1. **Global Context**:
-   - `ThemeContext`: Manages light/dark mode preferences.
-   - `LanguageContext`: Handles application language state (e.g., ID/EN).
-
-2. **Server State**:
-   - Managed via the `useSupabaseData` hook (encapsulates fetching, caching, and realtime updates).
-   - Realtime updates are enabled (likely via Supabase Realtime subscriptions) to reflect changes in `families` and `members` instantly.
-
-3. **Local UI State**:
-   - Components manage their own transient state (e.g., form inputs, modal visibility) using `useState` and `useReducer`.
-
-## Database Schema
-
-The backend is powered by a Supabase (PostgreSQL) database with two primary tables.
-
-### 1. `families`
-
-Stores information about trial accounts/families.
-
-| Column           | Type          | Description                             |
-| :--------------- | :------------ | :-------------------------------------- |
-| `id`             | `TEXT`        | Primary Key (Unique Identifier)         |
-| `name`           | `TEXT`        | Name of the family/service              |
-| `owner_email`    | `TEXT`        | Email of the account owner              |
-| `owner_password` | `TEXT`        | Encrypted password for the account      |
-| `expiry_date`    | `TIMESTAMPTZ` | When the trial expires                  |
-| `storage_used`   | `NUMERIC`     | Data usage metric (default 0)           |
-| `notes`          | `TEXT`        | Optional notes                          |
-| `created_at`     | `TIMESTAMPTZ` | Timestamp of creation                   |
-| `user_id`        | `UUID`        | Linked Supabase Auth User ID (Optional) |
-
-### 2. `members`
-
-Stores members associated with a family.
-
-| Column      | Type          | Description                            |
-| :---------- | :------------ | :------------------------------------- |
-| `id`        | `TEXT`        | Primary Key                            |
-| `family_id` | `TEXT`        | Foreign Key referencing `families(id)` |
-| `name`      | `TEXT`        | Member's name                          |
-| `email`     | `TEXT`        | Member's email                         |
-| `added_at`  | `TIMESTAMPTZ` | Timestamp when added                   |
-
-> [!WARNING]
-> **Security Note**: Row Level Security (RLS) is enabled on these tables, but current policies (`"Enable all access for now"`) allow public read/write access. **Strict RLS policies linking records to `auth.uid()` are highly recommended for production.**
+See [Security rollout](security-rollout.md) for schema compatibility, required secrets,
+acceptance checks and safe production cutover. Older open-RLS/client-UUID encryption
+instructions are obsolete.

@@ -12,8 +12,7 @@ export default function ConnectAccountButton({ theme, onConnect, label = 'Connec
 
   const handleClick = async () => {
     setLoading(true);
-    const res = await onConnect?.();
-    if (!res?.success) setLoading(false);
+    try { await onConnect?.(); } finally { setLoading(false); }
   };
 
   return (

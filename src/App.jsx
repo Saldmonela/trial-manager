@@ -6,15 +6,13 @@ import { cn } from './utils';
 import { ErrorBoundary } from './components/ErrorBoundary';
 
 // Pages
-import DashboardPublic from './components/DashboardPublic';
 import DashboardAdmin from './components/DashboardAdmin';
-import LandingPage from './components/LandingPage';
 import LoginPage from './components/auth/LoginPage';
 import AdminRoute from './components/auth/AdminRoute';
 import StoragePage from './components/storage/StoragePage';
 
 function App() {
-  const { session, user, isAdmin, isLoading, signInWithGoogle, signOut } = useAuth();
+  const { session, user, isLoading, signInWithGoogle, signInWithPassword, signOut } = useAuth();
   const { theme } = useTheme();
 
   if (isLoading) {
@@ -31,17 +29,12 @@ function App() {
   return (
     <ErrorBoundary>
       <Routes>
-        <Route path="/" element={
-          session
-            ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)
-            : <LandingPage onGoToLogin={() => window.location.href = '/dashboard'} />
-        } />
+        {/* Alat internal: tidak ada halaman publik. AdminRoute yang memutuskan login / tanpa akses. */}
         <Route path="/login" element={
           session
-            ? (isAdmin ? <Navigate to="/admin" replace /> : <Navigate to="/dashboard" replace />)
-            : <LoginPage onLogin={signInWithGoogle} />
+            ? <Navigate to="/admin" replace />
+            : <LoginPage onLogin={signInWithGoogle} onLoginWithPassword={signInWithPassword} />
         } />
-        <Route path="/dashboard" element={<DashboardPublic session={session} onLogout={signOut} />} />
         <Route path="/admin" element={
           <AdminRoute>
             <DashboardAdmin key={user?.id} onLogout={signOut} />
@@ -52,7 +45,7 @@ function App() {
             <StoragePage />
           </AdminRoute>
         } />
-        <Route path="*" element={<Navigate to="/" replace />} />
+        <Route path="*" element={<Navigate to="/admin" replace />} />
       </Routes>
     </ErrorBoundary>
   );

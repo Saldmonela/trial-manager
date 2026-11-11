@@ -1,6 +1,28 @@
 @import "tailwindcss";
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;500;700&family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&display=swap');
 
+/*
+ * Tailwind 4 tidak membaca tailwind.config.js secara otomatis, jadi token merek
+ * didaftarkan di sini. Tanpa blok ini class seperti text-gold-500 / bg-cream
+ * tidak menghasilkan CSS apa pun.
+ */
+@theme {
+  --color-cream: #F5F2EB;
+  --color-paper: #FBF9F4;
+  --color-gold-300: #E3D5BA;
+  --color-gold-400: #D4C5A9;
+  --color-gold-500: #C6A87C;
+  --color-gold-600: #A38860;
+  --color-gold-700: #7A6034; /* gold yang lolos AA sebagai teks di atas cream */
+  --color-olive: #4A5D23;
+  --color-wine: #5D232F;
+  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-serif: "Playfair Display", ui-serif, Georgia, serif;
+}
+
+/* ThemeContext memasang .light di <html>; tanpa class itu app berada di mode gelap. */
+@custom-variant dark (&:where(html:not(.light), html:not(.light) *));
+
 :root {
   /* Warm Beige / Editorial Palette */
   --color-cream: #F5F2EB;
@@ -37,6 +59,30 @@ body {
 
 h1, h2, h3, h4, h5, h6 {
   font-family: 'Playfair Display', serif;
+}
+
+/* Fokus keyboard: satu cincin gold yang konsisten, menang atas utilitas outline-none. */
+:focus-visible {
+  outline: 2px solid var(--color-gold-700);
+  outline-offset: 2px;
+}
+html:not(.light) :focus-visible {
+  outline-color: var(--color-gold-400);
+}
+
+::selection {
+  background-color: color-mix(in srgb, var(--color-gold-500) 40%, transparent);
+}
+
+input, textarea {
+  caret-color: var(--color-gold-600);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
 
 /* Custom Scrollbar - Minimalist */

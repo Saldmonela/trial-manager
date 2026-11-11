@@ -19,8 +19,12 @@ export default function FiltersBar({
 }) {
   return (
     <div
-      className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-4 border-b border-dashed"
-      style={{ borderColor: theme === 'light' ? '#e7e5e4' : '#292524' }}
+      className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 pb-4 border-b border-dashed sticky top-[72px] md:top-[88px] z-30 pt-4 md:pt-6"
+      style={{
+        borderColor: theme === 'light' ? '#e7e5e4' : '#292524',
+        backgroundColor: theme === 'light' ? 'rgba(250, 250, 249, 0.95)' : 'rgba(12, 10, 9, 0.95)',
+        backdropFilter: 'blur(12px)'
+      }}
     >
       <div className="flex flex-wrap items-center gap-6">
         <div className="flex flex-wrap gap-x-6 gap-y-2">
@@ -38,8 +42,8 @@ export default function FiltersBar({
                 filter === f.key
                   ? cn('font-semibold', theme === 'light' ? 'text-stone-900' : 'text-stone-50')
                   : cn('font-medium', theme === 'light'
-                      ? 'text-stone-400 hover:text-stone-600'
-                      : 'text-stone-600 hover:text-stone-400')
+                      ? 'text-stone-500 hover:text-stone-700'
+                      : 'text-stone-400 hover:text-stone-200')
               )}
             >
               {f.label}
@@ -53,7 +57,7 @@ export default function FiltersBar({
           ))}
         </div>
 
-        <div className={cn("h-4 w-px hidden sm:block", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+        <div className={cn("h-4 w-px hidden sm:block", theme === 'light' ? "bg-stone-300" : "bg-stone-800")} />
 
         <button
           onClick={() => onToggleBanned?.()}
@@ -64,8 +68,8 @@ export default function FiltersBar({
                 ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/80"
                 : "border-red-900/50 bg-red-950/20 text-red-400 hover:bg-red-900/40"
               : theme === 'light'
-                ? "border-stone-200 text-stone-400 hover:text-stone-600 hover:border-stone-300 bg-white"
-                : "border-stone-800 text-stone-600 hover:text-stone-400 hover:border-stone-700 bg-stone-900/30"
+                ? "border-stone-300 text-stone-500 hover:text-stone-700 hover:border-stone-400 bg-white"
+                : "border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700 bg-stone-900/30"
           )}
         >
           {showBanned ? t('dashboard.filters.hide_banned') : t('dashboard.filters.show_banned')}

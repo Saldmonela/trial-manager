@@ -1,7 +1,8 @@
 import '@testing-library/jest-dom/vitest';
+import { vi } from 'vitest';
 import { webcrypto } from 'node:crypto';
 
-// Polyfill Web Crypto API for jsdom (needed by src/lib/crypto.ts)
+// Polyfill Web Crypto API for jsdom (crypto.randomUUID in src/lib/familyUtils.js)
 if (!globalThis.crypto?.subtle) {
   Object.defineProperty(globalThis, 'crypto', {
     value: webcrypto,

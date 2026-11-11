@@ -59,7 +59,6 @@ vi.mock('../ui/ToastContainer', () => ({ default: () => null }));
 vi.mock('../ui/MigrationBanner', () => ({ default: () => null }));
 vi.mock('../dashboard/DashboardHeader', () => ({ default: () => <div data-testid="dashboard-header" /> }));
 vi.mock('../dashboard/MetricsRow', () => ({ default: () => <div data-testid="metrics-row" /> }));
-vi.mock('../dashboard/ServicesSection', () => ({ default: () => null }));
 
 // FiltersBar: render actual sort buttons from props so we can click them
 vi.mock('../dashboard/FiltersBar', () => ({
@@ -93,13 +92,9 @@ const mockFamilies = [
 ];
 
 const useSupabaseDataMock = vi.fn();
-const useJoinRequestsMock = vi.fn();
 
 vi.mock('../../hooks/useSupabaseData', () => ({
   useSupabaseData: () => useSupabaseDataMock(),
-  useJoinRequests: () => useJoinRequestsMock(),
-  useAppSetting: (_key: string, defaultValue: any) => ({ value: defaultValue, setValue: vi.fn(), loading: false, refetch: vi.fn() }),
-  updateSetting: vi.fn().mockResolvedValue({ success: true }),
 }));
 
 describe('Dashboard Sorting', () => {
@@ -113,13 +108,6 @@ describe('Dashboard Sorting', () => {
       addMember: vi.fn(),
       removeMember: vi.fn(),
       cancelSale: vi.fn(),
-    });
-
-    useJoinRequestsMock.mockReturnValue({
-      joinRequests: [],
-      loading: false,
-      updateStatus: vi.fn(),
-      refetch: vi.fn(),
     });
   });
 

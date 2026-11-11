@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Plus, Sparkles, Sun, Moon, Inbox, Settings, HardDrive, RefreshCw } from 'lucide-react';
+import { Plus, Sparkles, Sun, Moon, Settings, HardDrive, RefreshCw } from 'lucide-react';
 import { cn } from '../../utils';
 
 export default function DashboardHeader({
@@ -11,13 +11,9 @@ export default function DashboardHeader({
   onToggleLanguage,
   onToggleTheme,
   onOpenAddFamily,
-  onOpenJoinRequests,
   onOpenSettings,
   onOpenStorage,
   onSyncAllDrives,
-  pendingCount = 0,
-  publicMode = false,
-  session = null,
 }) {
   const location = useLocation();
   const isStorageActive = location.pathname.startsWith('/storage');
@@ -37,12 +33,12 @@ export default function DashboardHeader({
               theme === 'light' ? 'text-stone-900' : 'text-white'
             )}
           >
-            {publicMode ? 'Public Dashboard' : t('dashboard.title')} <span className="text-gold-500 italic">{publicMode ? '' : t('dashboard.subtitle')}</span>
+            {t('dashboard.title')} <span className="text-gold-500 italic">{t('dashboard.subtitle')}</span>
           </h1>
           <div className="flex items-center justify-center md:justify-start gap-2 mt-1">
             <p className="text-[10px] md:text-xs uppercase tracking-[0.2em] opacity-60">{t('auth.premium_dashboard')}</p>
             
-            {!publicMode && (
+            {(
               <>
                 <span className="text-stone-300 dark:text-stone-700">|</span>
                 <span className="flex items-center gap-1 px-1.5 py-0.5 border border-gold-500/50 bg-gold-500/10 text-gold-500 text-[10px] uppercase tracking-widest font-bold">
@@ -50,42 +46,27 @@ export default function DashboardHeader({
                 </span>
               </>
             )}
-            
-            {publicMode && !session && (
-              <>
-                 <span className="text-stone-300 dark:text-stone-700">|</span>
-                 <a href="/login" className="text-[10px] md:text-xs uppercase tracking-widest text-gold-500 hover:text-gold-400 transition-colors py-2 md:py-0 font-bold">
-                   Login
-                 </a>
-              </>
-            )}
-            {publicMode && session && (
-              <>
-                 <span className="text-stone-300 dark:text-stone-700">|</span>
-                 <span className="text-[10px] md:text-xs uppercase tracking-widest opacity-50 py-2 md:py-0 truncate max-w-[150px]">
-                   {session?.user?.email}
-                 </span>
-              </>
-            )}
           </div>
         </div>
 
         <div className="flex items-center gap-2 md:gap-4 w-full md:w-auto justify-center md:justify-end">
-          <button
-            onClick={onShowTutorial}
-            className={cn(
-              'p-3 md:p-2 rounded-full transition-colors hidden md:flex items-center gap-2 px-3',
-              theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
-            )}
-            title="Restart Tour"
-          >
-            <Sparkles className="w-5 h-5 md:w-4 md:h-4 text-gold-500" />
-            <span className="text-[10px] uppercase tracking-widest font-bold hidden md:inline">{t('dashboard.help')}</span>
-          </button>
+          {(
+            <button
+              onClick={onShowTutorial}
+              className={cn(
+                'p-3 md:p-2 rounded-full transition-colors hidden md:flex items-center gap-2 px-3',
+                theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
+              )}
+              title={t('admin.settings.restart_tour')}
+            >
+              <Sparkles className="w-5 h-5 md:w-4 md:h-4 text-gold-500" />
+              <span className="text-[10px] uppercase tracking-widest font-bold hidden md:inline">{t('dashboard.help')}</span>
+            </button>
+          )}
 
           <button
             onClick={onToggleLanguage}
-            title={language === 'en' ? 'Switch to Indonesian' : 'Switch to English'}
+            title={t('common.switch_language')}
             className={cn(
               'p-0 w-10 h-10 md:w-8 md:h-8 hidden md:flex items-center justify-center rounded-full transition-colors border text-[10px] font-bold',
               theme === 'light'
@@ -98,8 +79,8 @@ export default function DashboardHeader({
 
           <button
             onClick={onToggleTheme}
-            aria-label={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-            title={theme === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+            aria-label={theme === 'light' ? t('common.theme_to_dark') : t('common.theme_to_light')}
+            title={theme === 'light' ? t('common.theme_to_dark') : t('common.theme_to_light')}
             className={cn(
               'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
               theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
@@ -108,21 +89,21 @@ export default function DashboardHeader({
             {theme === 'light' ? <Moon className="w-5 h-5" /> : <Sun className="w-5 h-5" />}
           </button>
           
-          {/* Settings gear — available in both admin and public */}
+          {/* Settings gear */}
           <button
             onClick={() => onOpenSettings?.()}
-            aria-label="Settings"
+            aria-label={t('admin.settings.title')}
             className={cn(
               'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
               theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
             )}
-            title="Settings"
+            title={t('admin.settings.title')}
           >
             <Settings className="w-5 h-5" />
           </button>
 
           {/* Admin Context Actions */}
-          {!publicMode && (
+          {(
             <>
               <button
                 onClick={() => onOpenStorage?.()}
@@ -152,26 +133,6 @@ export default function DashboardHeader({
                   <RefreshCw className="w-5 h-5" />
                 </button>
               )}
-
-              <button
-                onClick={onOpenJoinRequests}
-                aria-label={pendingCount > 0 ? `Join requests, ${pendingCount} pending` : 'Join requests'}
-                className={cn(
-                  'relative p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
-                  theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400'
-                )}
-                title="Join Requests"
-              >
-                <Inbox className="w-5 h-5" />
-                {pendingCount > 0 && (
-                  <span className={cn(
-                    'absolute top-0 right-0 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1 shadow-sm ring-2 animate-pulse',
-                    theme === 'light' ? 'ring-stone-50' : 'ring-stone-950'
-                  )}>
-                    {pendingCount > 99 ? '99+' : pendingCount}
-                  </span>
-                )}
-              </button>
 
               <button
                 id="tour-new-family"

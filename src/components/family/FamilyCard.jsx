@@ -3,10 +3,11 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Users, X, Lock, Crown, Pencil, Trash2,
   AlertTriangle, Calendar, ChevronDown, ShieldCheck, Mail, RotateCcw,
-  Bell, Check, Ban, Cloud, RefreshCw, Unplug
+  Cloud, RefreshCw, Unplug
 } from 'lucide-react';
+import { revealFamilyPassword } from '../../lib/api';
 import { cn, formatBytes } from '../../utils';
-import { 
+import {
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
   isFamilyFull, getDaysRemaining, getExpiryStatus
@@ -47,11 +48,14 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
   );
 };
 
-function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, pendingOrders = [], onApproveOrder, onRejectOrder, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
+function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
   const { theme } = useTheme();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [showEmail, setShowEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordValue, setPasswordValue] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const [passwordBusy, setPasswordBusy] = useState(false);
   const [driveBusy, setDriveBusy] = useState(false);
 
   // Map email -> akun Drive terhubung; dipakai untuk owner & member (case-insensitive).
@@ -77,7 +81,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
       return 'Buy Account';
     }
     if (family.productType === 'account_custom') return 'Upgrade Now';
-    if (slotsAvailable <= 0) return 'Join Waitlist';
+    if (slotsAvailable <= 0) return 'Tidak tersedia';
     return 'Order Sharing';
   };
 
@@ -127,17 +131,17 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
     if (!email) return '';
     const [user, domain] = email.split('@');
     if (!domain) return email;
-    return `${user.slice(0, 2)}${'•'.repeat(8)}@${domain}`; 
+    return `${user.slice(0, 2)}${'•'.repeat(8)}@${domain}`;
   };
 
   const [copied, setCopied] = useState(null);
   const [isExpanded, setIsExpanded] = useState(false);
-  
+
   const slotsUsed = getSlotsUsed(family);
   const slotsAvailable = getSlotsAvailable(family);
   const isFull = isFamilyFull(family);
   const daysRemaining = getDaysRemaining(family.expiryDate);
-  const expiryStatus = getExpiryStatus(daysRemaining);
+  const expiryStatus = getExpiryStatus(daysRemaining, language);
 
   // Headline kartu — fallback manual (hanya saat TIDAK ada akun pool terhubung):
   // owner manual GB + jumlah manual member (GB). Angka per-member tidak ditampilkan
@@ -171,8 +175,21 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
     const poolLimit = isUnlimited ? null : Math.max(...accts.map((a) => Number(a.totalBytes) || 0));
     const poolUsed = Math.max(...accts.map((a) => Number(a.usedBytes) || 0));
 
-    return { hasLive: true, poolLimit, isUnlimited, poolUsed };
+    return { hasLive: true, poolUsed, poolLimit, isUnlimited };
   }, [connectedAccounts, family.ownerEmail, family.members]);
+
+  const hasExpiryWarning = useMemo(() => {
+    if (!family.expiryDate || !family.members || family.members.length === 0) return false;
+    const familyExpiryTime = new Date(family.expiryDate).getTime();
+
+    return family.members.some((m) => {
+      const isBuyer = (m.memberType || m.member_type) === 'pembeli';
+      if (!isBuyer || !(m.expiryDate || m.expiry_date)) return false;
+
+      const memberExpiryTime = new Date(m.expiryDate || m.expiry_date).getTime();
+      return memberExpiryTime > familyExpiryTime;
+    });
+  }, [family.expiryDate, family.members]);
 
   const copyTimerRef = useRef(null);
 
@@ -189,6 +206,20 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
       setIsExpanded(true);
     }
   }, [forceExpand]);
+
+  const readPassword = async () => {
+    if (family.ownerPassword) return family.ownerPassword;
+    setPasswordBusy(true); setPasswordError('');
+    try { const result = await revealFamilyPassword(family.id);
+      if (!result.success || !result.data?.password) { setPasswordError(result.error || 'Password tidak tersedia.'); return null; }
+      return result.data.password;
+    } finally { setPasswordBusy(false); }
+  };
+  const togglePassword = async () => {
+    if (showPassword) { setShowPassword(false); setPasswordValue(''); return; }
+    const value = await readPassword(); if (value !== null) { setPasswordValue(value); setShowPassword(true); }
+  };
+  const copyPassword = async () => { const value = showPassword ? passwordValue : await readPassword(); if (value !== null) await handleCopy(value, 'password'); };
 
   const handleCopy = async (text, type) => {
     if (!text) return;
@@ -210,21 +241,21 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
         const textarea = document.createElement('textarea');
         textarea.value = text;
         textarea.setAttribute('readonly', ''); // Mencegah keyboard virtual muncul di perangkat mobile
-        
+
         // Sembunyikan elemen secara aman dari pandangan pengguna
         textarea.style.position = 'fixed';
         textarea.style.top = '-9999px';
         textarea.style.left = '-9999px';
         textarea.style.opacity = '0';
-        
+
         document.body.appendChild(textarea);
         textarea.select();
         // Fallback untuk perangkat iOS
         textarea.setSelectionRange(0, 99999);
-        
+
         const result = document.execCommand('copy');
         document.body.removeChild(textarea);
-        
+
         if (result) {
           success = true;
         } else {
@@ -257,8 +288,8 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
       className={cn(
         "group rounded-none border transition-all duration-300 relative overflow-hidden flex flex-col h-full",
         // Base styles
-        theme === 'light' 
-          ? "bg-white shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)]" 
+        theme === 'light'
+          ? "bg-white shadow-[4px_4px_0px_0px_rgba(28,25,23,0.05)]"
           : "bg-stone-900 shadow-[4px_4px_0px_0px_rgba(0,0,0,0.5)]",
         // Highlight styling
         isHighlighted && (
@@ -273,11 +304,15 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             ? "opacity-[0.7] border-amber-500/50 hover:border-amber-500"
             : !readOnly && family.isBanned
               ? "border-red-600 shadow-[4px_4px_0px_0px_rgba(220,38,38,0.3)] bg-red-50 dark:bg-red-950/30 dark:border-red-700"
-              : !isHighlighted && (
-                  theme === 'light'
-                    ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
-                    : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
-                )
+              : !isHighlighted && (expiryStatus?.color === 'red' || expiryStatus?.color === 'yellow')
+                ? (theme === 'light'
+                    ? "border-amber-400 shadow-[4px_4px_0px_0px_rgba(251,191,36,0.2)] bg-amber-50/30 hover:border-amber-500"
+                    : "border-amber-700 shadow-[4px_4px_0px_0px_rgba(180,83,9,0.3)] bg-amber-950/10 hover:border-amber-600")
+                : !isHighlighted && (
+                    theme === 'light'
+                      ? "border-stone-200 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,1)] hover:border-gold-500"
+                      : "border-stone-800 hover:shadow-[4px_4px_0px_0px_rgba(198,168,124,0.5)] hover:border-gold-500"
+                  )
       )}
     >
       {/* Right-side stacked column: Expiry → Order → Edit/Delete */}
@@ -292,21 +327,6 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
         )}>
           {expiryStatus.text}
         </div>
-
-        {/* Order Badge (Admin only) */}
-        {!readOnly && pendingOrders.length > 0 && (
-          <div className="flex items-center gap-1.5 px-3 py-1 bg-amber-500 shadow-md">
-            <span className="relative flex h-2 w-2">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2 w-2 bg-white"></span>
-            </span>
-            <span className="text-[10px] font-bold uppercase tracking-widest text-black">
-              {family.productType === 'account_ready'
-                ? '1 Order'
-                : `${pendingOrders.length} Order${pendingOrders.length > 1 ? 's' : ''}`}
-            </span>
-          </div>
-        )}
 
         {/* Edit/Delete Buttons (Admin only) */}
         {!readOnly && (
@@ -353,15 +373,15 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
           <div className="flex items-center gap-4">
             <div className={cn(
               "w-12 h-12 flex items-center justify-center font-serif text-xl font-bold border rounded-none shrink-0 bg-transparent",
-              theme === 'light' 
-                ? "border-stone-900 text-stone-900" 
+              theme === 'light'
+                ? "border-stone-900 text-stone-900"
                 : "border-stone-50 text-stone-50"
             )}>
               {(() => {
                 const name = family.name || 'GM';
                 const parts = name.trim().split(' ');
-                return parts.length > 1 
-                  ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() 
+                return parts.length > 1
+                  ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
                   : name.substring(0, 2).toUpperCase();
               })()}
             </div>
@@ -395,7 +415,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
               </div>
             </div>
           </div>
-          
+
           {/* Price Tag (Public Mode) */}
           {readOnly && (
             <div className="text-right">
@@ -442,8 +462,8 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             onClick={(e) => { e.stopPropagation(); onCancelSale?.(family.id); }}
             className={cn(
               "shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-bold uppercase tracking-widest border transition-all hover:-translate-y-0.5",
-              theme === 'light' 
-                ? "border-red-300 text-red-700 hover:bg-red-100" 
+              theme === 'light'
+                ? "border-red-300 text-red-700 hover:bg-red-100"
                 : "border-red-800 text-red-400 hover:bg-red-900/50"
             )}
             title="Cancel this sale and make the account available again"
@@ -452,77 +472,6 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             Cancel Sale
           </button>
         </div>
-      )}
-
-      {/* Pending Orders Indicator (Admin only) */}
-      {!readOnly && pendingOrders.length > 0 && (
-        <>
-
-          {/* Inline pending orders section */}
-          <div className={cn(
-            "mx-6 mb-0 mt-4 px-4 py-3 border rounded-sm space-y-2",
-            theme === 'light'
-              ? "bg-amber-50 border-amber-200"
-              : "bg-amber-950/20 border-amber-900/40"
-          )}>
-            <div className={cn(
-              "text-[10px] font-bold uppercase tracking-widest flex items-center gap-1.5",
-              theme === 'light' ? "text-amber-700" : "text-amber-400"
-            )}>
-              <Bell className="w-3 h-3" />
-              Pending Order{pendingOrders.length > 1 ? 's' : ''}
-            </div>
-            {pendingOrders.map((order) => (
-              <div key={order.id} className={cn(
-                "flex items-center justify-between gap-2 py-1.5 border-t",
-                theme === 'light' ? "border-amber-200/60" : "border-amber-900/30"
-              )}>
-                <div className="flex-1 min-w-0">
-                  <div className={cn(
-                    "text-xs font-semibold truncate",
-                    theme === 'light' ? "text-amber-900" : "text-amber-200"
-                  )}>
-                    {order.name}
-                  </div>
-                  <div className={cn(
-                    "text-[10px] font-mono truncate opacity-70",
-                    theme === 'light' ? "text-amber-700" : "text-amber-400"
-                  )}>
-                    {order.email}
-                  </div>
-                </div>
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onApproveOrder?.(order.id, order); }}
-                    aria-label="Approve order"
-                    className={cn(
-                      "p-1.5 rounded-sm border transition-all hover:-translate-y-0.5",
-                      theme === 'light'
-                        ? "border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                        : "border-emerald-800 text-emerald-400 hover:bg-emerald-900/50"
-                    )}
-                    title="Approve order"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onRejectOrder?.(order.id, order); }}
-                    aria-label="Reject order"
-                    className={cn(
-                      "p-1.5 rounded-sm border transition-all hover:-translate-y-0.5",
-                      theme === 'light'
-                        ? "border-red-300 text-red-700 hover:bg-red-100"
-                        : "border-red-800 text-red-400 hover:bg-red-900/50"
-                    )}
-                    title="Reject order"
-                  >
-                    <Ban className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
       )}
 
       {/* Card Body */}
@@ -538,10 +487,10 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
               {slotsUsed} / {MAX_FAMILY_SLOTS}
             </span>
           </div>
-          
+
           <div className="flex gap-1 h-1.5">
             {[...Array(MAX_FAMILY_SLOTS)].map((_, i) => (
-               <div 
+               <div
                 key={i}
                 className={cn(
                   "flex-1 transition-all duration-500",
@@ -552,7 +501,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                />
             ))}
           </div>
-          
+
           {!isFull && (
             <p className={cn("text-xs mt-2 font-medium uppercase tracking-wider text-right", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
               {slotsAvailable} Available
@@ -573,7 +522,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
            {!isPublicView && family.members?.length > 0 && (
             <div className="flex -space-x-2 overflow-hidden py-1">
               {family.members.slice(0, 3).map((member, i) => (
-                <div 
+                <div
                   key={i}
                   className={cn(
                     "w-6 h-6 rounded-full border-2 flex items-center justify-center text-[9px] font-bold uppercase",
@@ -604,6 +553,17 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
              </div>
           )}
         </div>
+
+        {/* Expiry Gap Warning (Admin only) */}
+        {!isPublicView && hasExpiryWarning && (
+          <div className="mb-6 p-3 border flex items-start gap-2.5 bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold leading-relaxed">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">⚠️ Perlu Perpanjang Grup</p>
+              <p className="font-normal opacity-90">Ada member dengan masa aktif melampaui masa aktif grup family ini!</p>
+            </div>
+          </div>
+        )}
 
         {/* Storage Usage */}
         <div className="mb-6">
@@ -662,8 +622,8 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             <div className={cn(
               "grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 transition-all duration-300 rounded-sm py-1.5 pl-3 pr-2 -mx-2",
               highlightedEmail && family.ownerEmail === highlightedEmail && (
-                theme === 'light' 
-                  ? "bg-gold-500/10 ring-1 ring-gold-500/20" 
+                theme === 'light'
+                  ? "bg-gold-500/10 ring-1 ring-gold-500/20"
                   : "bg-gold-500/10 ring-1 ring-gold-500/30"
               )
             )}>
@@ -674,7 +634,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                 {showEmail ? family.ownerEmail : maskEmail(family.ownerEmail)}
               </span>
               <div className="flex items-center justify-end gap-5 shrink-0">
-                <button 
+                <button
                   onClick={() => setShowEmail(!showEmail)}
                   className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
                 >
@@ -740,23 +700,25 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                 </div>
               </div>
             )}
-
             <div className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 transition-all duration-300 rounded-sm py-1.5 pl-3 pr-2 -mx-2">
               <div className="flex items-center justify-start shrink-0">
                 <Lock className={cn("w-4 h-4", theme === 'light' ? "text-stone-400" : "text-stone-600")} />
               </div>
+              {passwordError && <p role="alert" className="col-span-3 text-xs text-red-500">{passwordError}</p>}
               <span className={cn("text-sm font-mono min-w-0 truncate", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-                {showPassword ? family.ownerPassword : '••••••••••'}
+                {showPassword ? passwordValue : '••••••••••'}
               </span>
               <div className="flex items-center justify-end gap-5 shrink-0">
-                <button 
-                  onClick={() => setShowPassword(!showPassword)}
+                <button
+                  disabled={passwordBusy}
+                  onClick={togglePassword}
                   className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
                 >
                   {showPassword ? t('common.hide') : t('common.show')}
                 </button>
-                <button 
-                  onClick={() => handleCopy(family.ownerPassword, 'password')}
+                <button
+                  disabled={passwordBusy}
+                  onClick={copyPassword}
                   className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
                 >
                   {copied === 'password' ? t('common.copied') : t('common.copy')}
@@ -809,8 +771,8 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             onClick={() => setIsExpanded(!isExpanded)}
             className={cn(
               "w-full flex items-center justify-between py-3 border-t transition-colors text-sm group",
-              theme === 'light' 
-                ? "border-stone-200 hover:bg-stone-50" 
+              theme === 'light'
+                ? "border-stone-200 hover:bg-stone-50"
                 : "border-stone-800 hover:bg-stone-900"
             )}
           >
@@ -836,7 +798,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             animate={{ height: 'auto', opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
             className={cn(
-              "border-t", 
+              "border-t",
               theme === 'light' ? "border-stone-200 bg-stone-50" : "border-stone-800 bg-stone-950"
             )}
           >
@@ -888,7 +850,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                               <span className="text-[9px] uppercase tracking-wider font-semibold opacity-50">Sisa:</span>
                               {(() => {
                                 const days = getDaysRemaining(member.expiryDate || member.expiry_date);
-                                const status = getExpiryStatus(days);
+                                const status = getExpiryStatus(days, language);
                                 return (
                                   <span className={cn(
                                     "px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider rounded-sm shrink-0",
@@ -897,7 +859,7 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                                     status.color === 'green' ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" :
                                     "bg-stone-500/15 text-stone-600 dark:text-stone-400"
                                   )}>
-                                    {status.text} ({new Date(member.expiryDate || member.expiry_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })})
+                                    {status.text} ({new Date(member.expiryDate || member.expiry_date).toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })})
                                   </span>
                                 );
                               })()}
@@ -936,8 +898,8 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
                   onClick={() => onAddMember(family.id)}
                   className={cn(
                     "w-full flex items-center justify-center gap-2 p-3 mt-2 border border-dashed transition-colors",
-                    theme === 'light' 
-                      ? "border-stone-300 text-stone-500 hover:bg-stone-100 hover:text-stone-900" 
+                    theme === 'light'
+                      ? "border-stone-300 text-stone-500 hover:bg-stone-100 hover:text-stone-900"
                       : "border-stone-700 text-stone-400 hover:bg-stone-900 hover:text-cream"
                   )}
                 >

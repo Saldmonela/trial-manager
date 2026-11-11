@@ -1,53 +1,19 @@
-# Deployment Guide
+# Deployment
 
-## Build Process
+Follow [Security rollout](security-rollout.md). Deploying only the frontend is insufficient:
+the reviewed October migration, the November storefront-retirement migration and all
+matching Edge Functions must be prepared together.
+Do not replay historical manual SQL or bootstrap an existing production database.
 
-The application is built using Vite, which bundles the code for production.
+Verify an approved secure backup/restore route before applying the production upgrade.
+Preserve owner UUIDs, existing admin roles and the Drive token encryption key.
+Configure the dedicated family credential key and exact allowed frontend origins server-side.
+The create-order, member-status and admin-access-code Edge Functions no longer exist in
+the repository; if they were ever deployed, delete them from the project as well.
 
-1.  **Run the build command**:
+Deployment was not performed by the local implementation. Production metadata was
+inspected without reading customer rows or existing dotenv/secret values.
 
-    ```bash
-    npm run build
-    ```
-
-    This generates a `dist/` directory containing the optimized static assets (HTML, CSS, JS).
-
-2.  **Preview locally**:
-    To verify the build works before deploying:
-    ```bash
-    npm run preview
-    ```
-
-## Supabase Configuration
-
-Ensure your production Supabase project matches your local development environment.
-
-1.  **Database Schema**: Apply the schema from `supabase_schema.sql` to your production database’s SQL Editor.
-2.  **Auth Settings**:
-    - Enable **Email/Password** provider.
-    - Enable **Google** provider (if used) and configure Client ID/Secret.
-    - Set the **Site URL** and **Redirect URLs** in Supabase Auth settings to your production domain (e.g., `https://your-app.vercel.app` and `https://your-app.vercel.app/**`).
-
-## Hosting Providers
-
-Since this is a static site (SPA), it can be hosted on any static site provider.
-
-### Vercel (Recommended)
-
-1.  Connect your GitHub repository to Vercel.
-2.  Vercel will detect Vite automatically.
-3.  Add the environment variables in the Vercel dashboard:
-    - `VITE_SUPABASE_URL`
-    - `VITE_SUPABASE_ANON_KEY`
-4.  Deploy.
-
-### Netlify
-
-1.  New site from Git.
-2.  Build command: `npm run build`
-3.  Publish directory: `dist`
-4.  Add environment variables in "Site settings" > "Build & deploy" > "Environment".
-5.  **Important**: For React Router to work on refresh, create a `_redirects` file in the `public/` folder with:
-    ```
-    /*  /index.html  200
-    ```
+CI verifies lint, frontend/Edge types, unit tests, real SQL/RLS migration behavior,
+native PostgreSQL concurrency and an environment-free build. Authenticated staging
+interaction and authorized Google consent must still be checked before production activation.

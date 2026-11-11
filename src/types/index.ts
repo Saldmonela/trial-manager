@@ -25,6 +25,17 @@ export type ProductType = 'slot' | 'account_ready' | 'account_custom';
 export interface Family {
   id: string;
   name: string;
+  ownerEmail?: string;
+  /** Passwords are fetched on demand and never populated by list queries. */
+  ownerPassword?: string;
+  expiryDate?: string | null;
+  storageUsed?: number;
+  createdAt?: string;
+  credentialStatus?: 'available' | 'missing' | 'unreadable';
+  credentialVersion?: 'v1' | 'legacy';
+  soldAt?: string | null;
+  sold_at?: string | null;
+  user_id?: string;
   notes?: string;
   storage_used?: number;
   created_at?: string;
@@ -38,6 +49,8 @@ export interface Family {
   productType?: ProductType;
   is_banned?: boolean;
   isBanned?: boolean;
+  isPublic?: boolean;
+  isActive?: boolean;
   members?: Member[]; // Optional members array from join
 }
 
@@ -46,7 +59,7 @@ export interface FamilyInput {
   id: string;
   name: string;
   ownerEmail: string;
-  ownerPassword: string;
+  ownerPassword?: string;
   expiryDate: string;
   storageUsed: number;
   notes?: string;
@@ -59,11 +72,15 @@ export interface FamilyInput {
   productType?: ProductType;
   is_banned?: boolean;
   isBanned?: boolean;
+  isPublic?: boolean;
+  isActive?: boolean;
 }
 
 /** Result of an async CRUD action. */
-export interface ActionResult {
+export interface ActionResult<T = unknown> {
   success: boolean;
+  data?: T;
+  code?: string;
   error?: string;
 }
 
@@ -89,6 +106,8 @@ export interface ExpiryStatus {
 export interface UseSupabaseDataReturn {
   families: Family[];
   loading: boolean;
+  refreshing?: boolean;
+  error?: string | null;
   addFamily: (family: FamilyInput) => Promise<ActionResult>;
   updateFamily: (family: FamilyInput) => Promise<ActionResult>;
   deleteFamily: (familyId: string) => Promise<ActionResult>;
@@ -97,67 +116,6 @@ export interface UseSupabaseDataReturn {
   removeMember: (familyId: string, memberId: string) => Promise<ActionResult>;
   cancelSale: (familyId: string) => Promise<ActionResult>;
   refetch: () => Promise<void>;
-}
-
-export interface PublicFamily {
-  id: string;
-  familyName: string;
-  serviceName?: string;
-  expiryDate: string | null;
-  storageUsed: number;
-  slotsAvailable: number;
-  priceMonthly?: number;
-  priceAnnual?: number;
-  priceSale?: number;
-  currency?: string;
-  createdAt?: string;
-  productType?: ProductType;
-  soldAt?: string | null;
-  hasPendingOrder?: boolean;
-  is_banned?: boolean;
-  isBanned?: boolean;
-}
-
-export interface UsePublicFamiliesReturn {
-  families: PublicFamily[];
-  loading: boolean;
-  error?: string | null;
-  refetch: () => Promise<void>;
-}
-
-export type JoinRequestStatus = 'pending' | 'approved' | 'rejected' | 'cancelled';
-
-export interface JoinRequest {
-  id: string;
-  familyId: string;
-  name: string;
-  email: string;
-  note: string;
-  status: JoinRequestStatus;
-  createdAt: string;
-  familyName?: string;
-  priceMonthly?: number;
-  priceAnnual?: number;
-  priceSale?: number;
-  currency?: string;
-  billingCycle?: 'monthly' | 'annual';
-  productType?: ProductType;
-}
-
-export interface JoinRequestInput {
-  familyId?: string;
-  name: string;
-  email: string;
-  note?: string;
-  billingCycle: 'monthly' | 'annual';
-  productType?: ProductType;
-}
-
-export interface UseJoinRequestsReturn {
-  joinRequests: JoinRequest[];
-  loading: boolean;
-  refetch: () => Promise<void>;
-  updateStatus: (requestId: string, status: JoinRequestStatus) => Promise<ActionResult>;
 }
 
 export interface UseToastReturn {
@@ -184,6 +142,8 @@ export interface AuthContextValue {
   isAdmin: boolean;
   isLoading: boolean;
   signInWithGoogle: () => Promise<void>;
+  /** Login email/password — hanya dipakai form testing yang dirender di dev build. */
+  signInWithPassword: (email: string, password: string) => Promise<ActionResult>;
   signOut: () => Promise<void>;
 }
 
@@ -224,12 +184,19 @@ export interface StorageAggregate {
   hasUnlimited: boolean;
 }
 
+export interface JustConnectedDrive {
+  accountId: string;
+  intent: string | null;
+}
+
 export interface UseConnectedAccountsReturn {
   accounts: ConnectedAccount[];
   aggregate: StorageAggregate;
   loading: boolean;
   error: string | null;
-  connectGoogleDrive: () => Promise<ActionResult>;
+  justConnected?: JustConnectedDrive | null;
+  clearJustConnected?: () => void;
+  connectGoogleDrive: (path?: '/admin' | '/storage', loginHint?: string, intent?: string) => Promise<ActionResult>;
   syncQuota: (id: string) => Promise<ActionResult>;
   syncAll: () => Promise<ActionResult>;
   disconnect: (id: string) => Promise<ActionResult>;

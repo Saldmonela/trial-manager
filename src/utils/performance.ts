@@ -6,7 +6,6 @@
  * @param wait - The delay in milliseconds
  * @returns - The debounced function
  */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function debounce<T extends (...args: any[]) => void>(func: T, wait: number): (...args: Parameters<T>) => void {
   let timeout: ReturnType<typeof setTimeout>;
   return function executedFunction(...args: Parameters<T>) {

@@ -1,6 +1,9 @@
 export const translations = {
   en: {
     common: {
+      theme_to_dark: "Switch to dark mode",
+      theme_to_light: "Switch to light mode",
+      switch_language: "Switch language to Indonesian",
       loading: "Loading dashboard...",
       search: "Search",
       clear: "Clear",
@@ -20,6 +23,14 @@ export const translations = {
       available: "Available",
       step: "Step",
       of: "of",
+      // Satuan sisa masa aktif. Singular/plural dipilih oleh formatDuration().
+      expiry: {
+        expired: "EXPIRED",
+        none: "No expiry set",
+        year: "YEAR", years: "YEARS",
+        month: "MONTH", months: "MONTHS",
+        day: "DAY", days: "DAYS",
+      },
       migration_title: "Storage Migration Available",
       migration_desc: "Move your LocalStorage data to Supabase Cloud for safety.",
       migrate_btn: "Migrate Now",
@@ -132,35 +143,6 @@ export const translations = {
       }
     },
     tutorial: {
-      public: {
-        welcome: {
-          title: "Welcome!",
-          text: "Discover premium Google AI accounts at the best prices. Let us show you around in a few quick steps.",
-          cta: "Show Me Around",
-        },
-        steps: [
-          {
-            title: "Dashboard Overview",
-            description: "The stats bar gives you a quick snapshot — total families, capacity, available sharing slots, and member counts.",
-          },
-          {
-            title: "Premium Upgrades",
-            description: "Upgrade your personal Google account to premium! One-time payment, no subscription, full warranty, and instant activation.",
-          },
-          {
-            title: "Ready Accounts",
-            description: "Ready Accounts are fully set up and ready to use. Buy one and it's exclusively yours. Look for the green 'Ready Account' badge.",
-          },
-          {
-            title: "Sharing Accounts",
-            description: "Join a shared Google AI Family plan at a lower cost. You'll share the family slot with others. Look for the blue 'Sharing Account' badge.",
-          },
-          {
-            title: "Filters & Sorting",
-            description: "Use filters to show available or fully booked plans. Sort by newest, expiry date, or storage to find the best option.",
-          },
-        ],
-      },
       admin: {
         welcome: {
           title: "Welcome Home",
@@ -173,51 +155,48 @@ export const translations = {
             description: "Monitor your entire collection at a glance — total families, available slots, capacity usage, and member counts.",
           },
           {
-            title: "Managing Orders",
-            description: "The inbox icon shows incoming orders. Review, approve, or reject join requests from customers in one click.",
-          },
-          {
             title: "Family Cards",
-            description: "Each card shows members, expiry dates, storage, and pending orders. Use the edit and delete buttons on each card.",
+            description: "Each card shows members, expiry dates, and storage. Use the edit and delete buttons on each card.",
           },
           {
             title: "Settings & Search",
-            description: "Use the search bar to find members across all families. Open Settings to configure pricing and UI preferences.",
+            description: "Use the search bar to find members across all families. Open Settings for your account and preferences.",
           },
         ],
       },
     },
-    landing: {
-      hero_title: "Discover Premium",
-      hero_subtitle: "Digital Assets",
-      hero_desc: "The premier destination for upgrading your digital life. Browse exclusive Google AI Premium accounts, from solo upgrades to cost-effective shared family plans.",
-      hero_tag: "Elevate Your Digital Experience",
-      cta_get_started: "Explore Catalog",
-      cta_primary: "Access Dashboard",
-      cta_secondary: "View Documentation",
-      features: {
-        title: "Premium Features",
-        multi_account: {
-          title: "Multi-Account Manager",
-          desc: "Manage 100+ Google Family accounts from a single glass-morphic interface.",
-        },
-        smart_monitoring: {
-          title: "Instant Fulfillment",
-          desc: "Get immediate access to your premium accounts. No waiting, no hassle, just instant digital upgrades upon purchase.",
-        },
-        secure_vault: {
-          title: "Verified Accounts",
-          desc: "Every account is hand-verified and comes with a full warranty. Enjoy your premium experience with complete peace of mind.",
-        },
-        premium_ui: {
-          title: "Luxury Experience",
-          desc: "Browse our curated collection in an editorial design environment that feels like a premium boutique.",
-        }
-      }
-    }
+    // Panel admin: modal pengaturan dan teks pendukung.
+    admin: {
+      settings: {
+        title: "Settings", account: "Account", email: "Email", logout: "Logout",
+        preferences: "Preferences", language: "Language", restart_tour: "Restart Tour",
+      },
+      archive: {
+        title: "Archive family?",
+        description: "The family is removed from the active list. Its members are kept.",
+        confirm: "Archive",
+      },
+      family: {
+        sales_type: "Sales type", shared_slot: "Shared Slot", ready_account: "Ready Account (Pre-made)",
+        show_public: "Show in public catalog", active: "Active family", banned: "Mark as Banned",
+        password_hint: "Leave blank to keep unchanged", show: "Show", hide: "Hide",
+        price_monthly: "Monthly Price (IDR)", price_annual: "Annual Price (IDR)", price_sale: "One-Time Price (IDR)",
+      },
+      migration: {
+        title: "Import local data explicitly",
+        desc: "Each family and its members are imported in one transaction. Families with an existing ID are not overwritten.",
+        confirm: "I confirm the passwords in the local data are real passwords, not ciphertext",
+        submit: "Import via server", submitting: "Importing…",
+        banner: "{count} family(ies) need a password check. Enter a replacement via Edit if the old password cannot be verified.",
+      },
+      load: { retry: "Try again", refreshing: "Updating data…" },
+    },
   },
   id: {
     common: {
+      theme_to_dark: "Ganti ke mode gelap",
+      theme_to_light: "Ganti ke mode terang",
+      switch_language: "Ganti bahasa ke Inggris",
       loading: "Memuat dasbor...",
       search: "Cari",
       clear: "Hapus",
@@ -237,6 +216,14 @@ export const translations = {
       available: "Tersedia",
       step: "Langkah",
       of: "dari",
+      // Bahasa Indonesia tidak mengenal bentuk jamak, jadi singular == plural.
+      expiry: {
+        expired: "EXPIRED",
+        none: "Belum ada tanggal",
+        year: "TAHUN", years: "TAHUN",
+        month: "BULAN", months: "BULAN",
+        day: "HARI", days: "HARI",
+      },
       migration_title: "Migrasi Penyimpanan Tersedia",
       migration_desc: "Pindahkan data LocalStorage ke Supabase Cloud untuk keamanan.",
       migrate_btn: "Migrasi Sekarang",
@@ -348,35 +335,6 @@ export const translations = {
       }
     },
     tutorial: {
-      public: {
-        welcome: {
-          title: "Selamat Datang!",
-          text: "Temukan akun Google AI premium dengan harga terbaik. Mari kami tunjukkan dalam beberapa langkah singkat.",
-          cta: "Tunjukkan",
-        },
-        steps: [
-          {
-            title: "Ringkasan Dashboard",
-            description: "Bar statistik menampilkan ringkasan cepat — total keluarga, kapasitas, slot sharing tersedia, dan jumlah anggota.",
-          },
-          {
-            title: "Upgrade Premium",
-            description: "Upgrade akun Google personal kamu ke premium! Bayar sekali, tanpa langganan, garansi penuh, dan aktivasi instan.",
-          },
-          {
-            title: "Akun Siap Pakai",
-            description: "Akun Siap Pakai sudah disetup dan siap digunakan. Beli dan akun itu milikmu sepenuhnya. Cari badge hijau 'Ready Account'.",
-          },
-          {
-            title: "Akun Sharing",
-            description: "Gabung ke Google AI Family Plan bersama dengan biaya lebih murah. Kamu berbagi slot keluarga dengan orang lain. Cari badge biru 'Sharing Account'.",
-          },
-          {
-            title: "Filter & Sortir",
-            description: "Gunakan filter untuk menampilkan plan yang tersedia atau penuh. Sortir berdasarkan terbaru, tanggal kadaluarsa, atau storage.",
-          },
-        ],
-      },
       admin: {
         welcome: {
           title: "Selamat Datang",
@@ -389,47 +347,42 @@ export const translations = {
             description: "Pantau seluruh koleksi sekilas — total keluarga, slot tersedia, penggunaan kapasitas, dan jumlah anggota.",
           },
           {
-            title: "Kelola Pesanan",
-            description: "Ikon inbox menampilkan pesanan masuk. Review, setujui, atau tolak permintaan gabung dari pelanggan dalam satu klik.",
-          },
-          {
             title: "Kartu Keluarga",
-            description: "Setiap kartu menampilkan anggota, tanggal kadaluarsa, storage, dan pesanan pending. Gunakan tombol edit dan hapus di setiap kartu.",
+            description: "Setiap kartu menampilkan anggota, tanggal kadaluarsa, dan storage. Gunakan tombol edit dan hapus di setiap kartu.",
           },
           {
             title: "Pengaturan & Pencarian",
-            description: "Gunakan pencarian untuk menemukan anggota di semua keluarga. Buka Pengaturan untuk konfigurasi harga dan preferensi UI.",
+            description: "Gunakan pencarian untuk menemukan anggota di semua keluarga. Buka Pengaturan untuk akun dan preferensi.",
           },
         ],
       },
     },
-    landing: {
-      hero_title: "Temukan Layanan",
-      hero_subtitle: "Digital Premium",
-      hero_desc: "Destinasi utama untuk meningkatkan kehidupan digital Anda. Temukan layanan Google AI Premium eksklusif, mulai dari upgrade personal hingga paket keluarga yang hemat.",
-      hero_tag: "Tingkatkan Pengalaman Digital Anda",
-      cta_get_started: "Lihat Katalog",
-      cta_primary: "Akses Dasbor",
-      cta_secondary: "Lihat Dokumentasi",
-      features: {
-        title: "Fitur Premium",
-        multi_account: {
-          title: "Pengelola Multi-Akun",
-          desc: "Kelola 100+ akun Keluarga Google dari satu antarmuka glass-morphic.",
-        },
-        smart_monitoring: {
-          title: "Akses Instan",
-          desc: "Dapatkan akses langsung ke akun premium Anda setelah pembelian. Tanpa repot, tanpa menunggu lama.",
-        },
-        secure_vault: {
-          title: "Akun Terverifikasi",
-          desc: "Setiap akun telah diverifikasi dan dilengkapi garansi penuh. Nikmati pengalaman premium dengan tenang tanpa rasa khawatir.",
-        },
-        premium_ui: {
-          title: "Pengalaman Mewah",
-          desc: "Jelajahi koleksi pilihan kami dalam balutan desain editorial yang memberikan nuansa butik premium.",
-        }
-      }
-    }
+    // Panel admin: modal pengaturan dan teks pendukung.
+    admin: {
+      settings: {
+        title: "Pengaturan", account: "Akun", email: "Email", logout: "Keluar",
+        preferences: "Preferensi", language: "Bahasa", restart_tour: "Ulangi panduan",
+      },
+      archive: {
+        title: "Arsipkan family?",
+        description: "Family dihapus dari daftar aktif. Member tetap disimpan.",
+        confirm: "Arsipkan",
+      },
+      family: {
+        sales_type: "Jenis penjualan", shared_slot: "Slot Bersama", ready_account: "Akun Siap Pakai (Jadi)",
+        show_public: "Tampilkan di katalog publik", active: "Family aktif", banned: "Tandai Terblokir",
+        password_hint: "Kosongkan jika tidak diubah", show: "Tampilkan", hide: "Sembunyikan",
+        price_monthly: "Harga Bulanan (IDR)", price_annual: "Harga Tahunan (IDR)", price_sale: "Harga Sekali Bayar (IDR)",
+      },
+      migration: {
+        title: "Import data lokal secara eksplisit",
+        desc: "Setiap family beserta member diimpor dalam satu transaksi. Family dengan ID yang sudah ada tidak ditimpa.",
+        confirm: "Saya memastikan password pada data lokal merupakan password asli, bukan ciphertext",
+        submit: "Import melalui server", submitting: "Mengimpor…",
+        banner: "{count} family memerlukan pemeriksaan password. Masukkan pengganti melalui Edit jika password lama tidak dapat diverifikasi.",
+      },
+      load: { retry: "Coba lagi", refreshing: "Memperbarui data…" },
+    },
+    // Halaman publik: /, /dashboard, checkout, dan cek status.
   }
 };

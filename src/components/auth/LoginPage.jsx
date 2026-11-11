@@ -1,17 +1,34 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { Moon, Sun, Crown } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { cn } from '../../utils';
 
+// Form email/password khusus testing lokal. Dijaga import.meta.env.DEV supaya
+// halaman login produksi tetap Google-only (Vite meng-eliminasi blok ini di build).
+const SHOW_DEV_LOGIN = import.meta.env.DEV;
+
 /**
  * Login page with Google Sign-In, theme toggle, and language toggle.
  * Extracted from App.jsx for modularity.
  */
-export default function LoginPage({ onLogin }) {
+export default function LoginPage({ onLogin, onLoginWithPassword }) {
   const { theme, toggleTheme } = useTheme();
   const { t, language, toggleLanguage } = useLanguage();
+  const [creds, setCreds] = useState({ email: '', password: '' });
+  const [devError, setDevError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const handleDevLogin = async e => {
+    e.preventDefault(); setDevError(''); setBusy(true);
+    try { const result=await onLoginWithPassword?.(creds.email,creds.password); if(!result?.success)setDevError(result?.error||'Login gagal.'); }
+    catch { setDevError('Login gagal. Coba lagi.'); } finally { setBusy(false); }
+  };
+  const handleGoogleLogin = async () => {
+    setDevError(''); setBusy(true);
+    try { await onLogin(); } catch { setDevError('Login Google gagal. Coba lagi.'); } finally { setBusy(false); }
+  };
 
   return (
     <div className={cn(
@@ -42,6 +59,7 @@ export default function LoginPage({ onLogin }) {
       </div>
 
       <div className="w-full max-w-md p-8 text-center space-y-8">
+        {devError && <p role="alert" className="text-red-600">{devError}</p>}
         <motion.div
            initial={{ opacity: 0, y: -20 }}
            animate={{ opacity: 1, y: 0 }}
@@ -78,7 +96,8 @@ export default function LoginPage({ onLogin }) {
            </div>
 
            <button
-             onClick={onLogin}
+             onClick={handleGoogleLogin}
+             disabled={busy}
              className={cn(
                "w-full group relative flex items-center justify-center gap-3 px-6 py-4 font-bold rounded-none text-xs uppercase tracking-widest transition-all hover:-translate-y-1 shadow-lg",
                theme === 'light' 
@@ -94,8 +113,65 @@ export default function LoginPage({ onLogin }) {
              </svg>
              {t('auth.continue_google')}
            </button>
+
+           {SHOW_DEV_LOGIN && (
+             <form onSubmit={handleDevLogin} className="space-y-3 text-left">
+               <div className={cn(
+                 "flex items-center gap-3 text-[10px] uppercase tracking-widest font-bold pt-2",
+                 theme === 'light' ? "text-stone-400" : "text-stone-600"
+               )}>
+                 <span className={cn("h-px flex-1", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+                 Dev only
+                 <span className={cn("h-px flex-1", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+               </div>
+
+               <input
+                 type="email"
+                 required
+                 autoComplete="username"
+                 value={creds.email}
+                 onChange={(e) => setCreds({ ...creds, email: e.target.value })}
+                 placeholder="admin@testing.com"
+                 className={cn(
+                   "w-full px-4 py-3 border bg-transparent text-sm focus:outline-none transition-colors",
+                   theme === 'light'
+                     ? "border-stone-200 text-stone-900 placeholder-stone-400 focus:border-stone-900"
+                     : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
+                 )}
+               />
+               <input
+                 type="password"
+                 required
+                 autoComplete="current-password"
+                 value={creds.password}
+                 onChange={(e) => setCreds({ ...creds, password: e.target.value })}
+                 placeholder="Password"
+                 className={cn(
+                   "w-full px-4 py-3 border bg-transparent text-sm focus:outline-none transition-colors",
+                   theme === 'light'
+                     ? "border-stone-200 text-stone-900 placeholder-stone-400 focus:border-stone-900"
+                     : "border-stone-700 text-stone-50 placeholder-stone-600 focus:border-stone-50"
+                 )}
+               />
+
+
+
+               <button
+                 type="submit"
+                 disabled={busy}
+                 className={cn(
+                   "w-full py-3 text-xs font-bold uppercase tracking-widest border transition-colors disabled:opacity-50",
+                   theme === 'light'
+                     ? "border-stone-300 text-stone-700 hover:bg-stone-100"
+                     : "border-stone-700 text-stone-300 hover:bg-stone-800"
+                 )}
+               >
+                 {busy ? 'Signing in…' : 'Sign in with email'}
+               </button>
+             </form>
+           )}
         </motion.div>
-        
+
         <p className={cn("text-xs opacity-50", theme === 'light' ? "text-stone-400" : "text-stone-600")}>
           {t('auth.terms')}
         </p>
