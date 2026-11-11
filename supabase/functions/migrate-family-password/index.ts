@@ -5,7 +5,7 @@ Deno.serve(endpoint(async req => {
   const actor=await requireAdmin(req);const body=await readBody(req);const id=textField(body.familyId,'Family',128);const svc=serviceClient();
   const {data,error}=await svc.from('families').select('user_id,owner_password,owner_password_v1').eq('id',id).is('archived_at',null).single();checkDb(error);
   if(!data)throw new ApiError('FAMILY_NOT_FOUND','Family tidak ditemukan.',404);
-  if(data.owner_password_v1)return {migrated:false,version:'v1'};
+  if(data.owner_password_v1?.startsWith('v1:'))return {migrated:false,version:'v1'};
   const plaintext=await decryptLegacy(data.owner_password||'',data.user_id);
   if(body.dryRun===true)return {recoverable:true};
   const ciphertext=await encryptCredential(plaintext,id);

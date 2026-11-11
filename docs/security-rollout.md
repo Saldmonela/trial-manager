@@ -13,9 +13,28 @@ stay, service_role keeps EXECUTE, and re-granting reverses it.
 
 Sections below that describe public ordering, status codes or commerce activation are
 kept as a record of the October design and do not describe the running application.
-Apply the November migration after the October one. Like the October migration, it has
-not been applied to production by this work. Previously deployed copies of the three
-deleted Edge Functions must be removed from the Supabase project by an operator.
+Apply the November migrations after the October one.
+
+## Production state on 2026-11-11
+
+Inspection showed the October migration was already present in production, so the
+grants described above were live. Both November migrations were then applied as plain
+SQL (the project's migration history table is empty; earlier migrations were also run
+by hand). The three storefront Edge Functions were never deployed there.
+
+save-family and reveal-family-password are deployed. FRONTEND_URL is set to the Vercel
+origin; localhost is not an allowed origin unless ALLOWED_FRONTEND_ORIGINS adds it.
+FAMILY_CREDENTIAL_KEY_V1 must be set by the operator before a new password can be
+saved; revealing legacy passwords does not need it. Every active family still holds a
+legacy credential, and one row carries a copy of that legacy value in
+owner_password_v1, which reveal-family-password reads as legacy because it lacks the
+v1: prefix. app_migrate_credential refuses that row until the copy is cleared.
+
+The deployed Drive functions (drive-connect-url, drive-sync-quota,
+drive-oauth-callback) are still the June versions, where the callback links the
+account itself. drive-complete-connect, drive-disconnect and migrate-family-password
+are not deployed. The Drive functions in this repository must be deployed together
+with the frontend that uses the completion step.
 
 ## Server-only credential path
 

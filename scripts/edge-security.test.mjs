@@ -70,3 +70,26 @@ test('explicit migration rejects unreadable legacy data without writing',async()
  const r=await runtime('migrate-family-password/index.ts',{query:()=>({data:{user_id:A,owner_password:'invalid-or-plaintext',owner_password_v1:null},error:null})});
  assert.equal((await r.call({familyId:'family'})).body.code,'UNREADABLE_CREDENTIAL');assert.ok(!r.rpcCalls.some(q=>q.name==='app_migrate_credential'));
 });
+async function legacyCiphertext(plaintext,ownerId){
+ const salt=new Uint8Array(16).fill(3),iv=new Uint8Array(12).fill(4);
+ const material=await webcrypto.subtle.importKey('raw',new TextEncoder().encode(ownerId),'PBKDF2',false,['deriveKey']);
+ const key=await webcrypto.subtle.deriveKey({name:'PBKDF2',salt,iterations:100000,hash:'SHA-256'},material,{name:'AES-GCM',length:256},false,['encrypt']);
+ return Buffer.concat([salt,iv,new Uint8Array(await webcrypto.subtle.encrypt({name:'AES-GCM',iv},key,new TextEncoder().encode(plaintext)))]).toString('base64');
+}
+test('reveal opens a legacy password that an old client copied into the v1 column',async()=>{
+ const legacy=await legacyCiphertext('legacy-synthetic-password',A);
+ const r=await runtime('reveal-family-password/index.ts',{query:q=>q.table==='families'?{data:{id:'family',user_id:A,owner_password:legacy,owner_password_v1:legacy},error:null}:{data:null,error:null}});
+ const result=await r.call({familyId:'family'});
+ assert.equal(result.status,200);assert.equal(result.body.data.password,'legacy-synthetic-password');
+ assert.ok(r.queries.some(q=>q.table==='app_audit_log'&&q.payload.action==='credential_revealed'));
+});
+test('reveal still opens a real v1 credential with the server key',async()=>{
+ const c=await runtime('_shared/credentials.ts');const cipher=await c.exports.encryptCredential('server-synthetic-password','family');
+ const r=await runtime('reveal-family-password/index.ts',{query:q=>q.table==='families'?{data:{id:'family',user_id:A,owner_password:'stale-legacy',owner_password_v1:cipher},error:null}:{data:null,error:null}});
+ assert.equal((await r.call({familyId:'family'})).body.data.password,'server-synthetic-password');
+});
+test('migration dry run does not mistake a copied legacy value for a migrated credential',async()=>{
+ const legacy=await legacyCiphertext('legacy-synthetic-password',A);
+ const r=await runtime('migrate-family-password/index.ts',{query:()=>({data:{user_id:A,owner_password:legacy,owner_password_v1:legacy},error:null})});
+ assert.deepEqual((await r.call({familyId:'family',dryRun:true})).body.data,{recoverable:true});
+});
