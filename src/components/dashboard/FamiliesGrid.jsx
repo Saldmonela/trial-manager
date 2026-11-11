@@ -17,9 +17,6 @@ export default function FamiliesGrid({
   onRemoveMember,
   onEditMember,
   onCancelSale,
-  pendingOrdersByFamily = {},
-  onApproveOrder,
-  onRejectOrder,
   readOnly = false,
   onRequest,
   highlightedFamilyId = null,
@@ -42,12 +39,18 @@ export default function FamiliesGrid({
           )}
         >
           <div className="relative z-10 flex flex-col items-center">
-            <div className={cn(
-              'w-16 h-16 mb-6 flex items-center justify-center border-2',
-              theme === 'light' ? 'border-stone-200 bg-white text-stone-400' : 'border-stone-700 bg-stone-900 text-stone-500'
-            )}>
-              <SearchX className="w-7 h-7" />
-            </div>
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ type: "spring", bounce: 0.5 }}
+              className={cn(
+                'w-24 h-24 mb-6 flex items-center justify-center rounded-full border border-dashed relative',
+                theme === 'light' ? 'border-stone-300 bg-stone-100 text-stone-400' : 'border-stone-700 bg-stone-800 text-stone-500'
+              )}
+            >
+              <div className="absolute inset-0 bg-gold-500/10 blur-xl rounded-full" />
+              <SearchX className="w-10 h-10 relative z-10" />
+            </motion.div>
             <h3 className={cn('text-2xl font-serif font-bold mb-3 tracking-tight', theme === 'light' ? 'text-stone-900' : 'text-stone-50')}>
               {t ? t('dashboard.no_match.title') : 'No families match'}
             </h3>
@@ -134,9 +137,6 @@ export default function FamiliesGrid({
             onRemoveMember={onRemoveMember}
             onEditMember={onEditMember}
             onCancelSale={onCancelSale}
-            pendingOrders={pendingOrdersByFamily[family.id] || []}
-            onApproveOrder={onApproveOrder}
-            onRejectOrder={onRejectOrder}
             readOnly={readOnly}
             onRequest={onRequest}
             isHighlighted={family.id === highlightedFamilyId}

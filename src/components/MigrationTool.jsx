@@ -1,137 +1,37 @@
 import React, { useState } from 'react';
-import { supabase } from '../supabaseClient';
-import { HardDrive, Check, Loader2, AlertTriangle } from 'lucide-react';
-import { useTheme } from '../context/ThemeContext';
+import { invokeApi } from '../lib/api';
 import { useLanguage } from '../context/LanguageContext';
-import { cn } from '../utils';
-import { encryptPassword } from '../lib/crypto';
-
-export default function MigrationTool({ onSuccess }) {
-  const { theme } = useTheme();
+export default function MigrationTool({onSuccess}) {
   const { t } = useLanguage();
-  const [status, setStatus] = useState('idle'); // idle, migrating, success, error
-  const [log, setLog] = useState('');
-
-  const handleMigrate = async () => {
-    try {
-      setStatus('migrating');
-      if (!supabase) {
-        setLog('Supabase Client not configured. Check your .env file.');
-        setStatus('error');
-        return;
+  const [busy,setBusy]=useState(false);const [message,setMessage]=useState('');const [confirmed,setConfirmed]=useState(false);
+  const migrate=async()=>{
+    if(!confirmed||busy)return;setBusy(true);setMessage('');
+    try{
+      const rows=JSON.parse(localStorage.getItem('google-ai-families')||'[]');
+      if(!Array.isArray(rows)||!rows.length)throw new Error('Tidak ada data lokal.');
+      for(const row of rows){
+        // Explicit import: existing identities are never overwritten on retry.
+        const result=await invokeApi('save-family',{id:row.id,name:row.name||'',ownerEmail:row.ownerEmail,ownerPassword:row.ownerPassword,
+          expiryDate:row.expiryDate||'',storageUsed:Number(row.storageUsed)||0,notes:row.notes||'',
+          priceMonthly:Number(row.priceMonthly)||0,priceAnnual:Number(row.priceAnnual)||0,priceSale:Number(row.priceSale)||0,currency:row.currency||'IDR',productType:row.productType||'slot',operation:'create',
+          members:(row.members||[]).map(m=>({...m,storageUsed:Number(m.storageUsed)||0,memberType:m.memberType||'pembeli'}))});
+        if(!result.success)throw new Error(result.error||'Import gagal. Data lokal tetap disimpan.');
       }
-
-      setLog('Reading LocalStorage...');
-      
-      const rawData = window.localStorage.getItem('google-ai-families');
-      if (!rawData) {
-        setLog('No data found in LocalStorage.');
-        setStatus('error');
-        return;
-      }
-
-      const families = JSON.parse(rawData);
-      setLog(`Found ${families.length} families. Starting upload...`);
-
-      // Get stable encryption key (user.id)
-      const { data: { user } } = await supabase.auth.getUser();
-      const encryptionKey = user?.id || '';
-
-      for (const family of families) {
-        // Encrypt password before storing
-        const encryptedPassword = await encryptPassword(family.ownerPassword, encryptionKey);
-
-        // Insert Family
-        const { error: familyError } = await supabase
-          .from('families')
-          .upsert({ // upsert to avoid duplicates if re-run
-            id: family.id,
-            user_id: user?.id,
-            name: family.name,
-            owner_email: family.ownerEmail,
-            owner_password: encryptedPassword,
-            expiry_date: family.expiryDate,
-            storage_used: Number(family.storageUsed) || 0,
-            notes: family.notes,
-            created_at: family.createdAt
-          });
-
-        if (familyError) throw familyError;
-
-        // Insert Members
-        if (family.members && family.members.length > 0) {
-           const membersToInsert = family.members.map(m => ({
-             id: m.id,
-             family_id: family.id,
-             name: m.name,
-             email: m.email,
-             added_at: m.addedAt
-           }));
-
-           const { error: memberError } = await supabase
-             .from('members')
-             .upsert(membersToInsert); // upsert members
-            
-           if (memberError) throw memberError;
-        }
-      }
-
-      setLog('Migration complete! All data from your local browser is now synced to Supabase Cloud.');
-      setStatus('success');
-      
-      // Clear the old data from localStorage since it's now safe in the cloud
-      window.localStorage.removeItem('google-ai-families');
-
-      if (onSuccess) {
-        setTimeout(onSuccess, 3000); 
-      }
-
-    } catch (error) {
-      console.error(error);
-      setLog(`Error: ${error.message || 'Unknown error'}`);
-      setStatus('error');
-    }
+      setMessage('Import selesai. Data lokal tetap disimpan untuk pemulihan.');onSuccess?.();
+    }catch(error){setMessage(error instanceof Error?error.message:'Import gagal.');}finally{setBusy(false);}
   };
-
-  if (status === 'success') {
-     return null; // Hide after success
-  }
-
   return (
-    <div className={cn(
-      "border-b p-4 flex items-center justify-between",
-      theme === 'light' ? "bg-amber-50 border-amber-200" : "bg-amber-900/10 border-amber-900/30"
-    )}>
-      <div className="flex items-center gap-4">
-        <div className={cn("p-2 rounded-full", theme === 'light' ? "bg-amber-100 text-amber-600" : "bg-amber-900/30 text-amber-500")}>
-          <HardDrive className="w-5 h-5" />
-        </div>
-        <div>
-          <h4 className={cn("font-bold text-sm", theme === 'light' ? "text-amber-900" : "text-amber-500")}>
-            {t('common.migration_title')}
-          </h4>
-          <p className={cn("text-xs opacity-90", theme === 'light' ? "text-amber-800" : "text-amber-200")}>
-            {status === 'idle' && t('common.migration_desc')}
-             {status === 'migrating' && log}
-             {status === 'error' && log}
-          </p>
-        </div>
-      </div>
-
-      <button
-        onClick={handleMigrate}
-        disabled={status === 'migrating'}
-        className={cn(
-            "px-4 py-2 text-xs font-bold uppercase tracking-widest rounded transition-colors flex items-center gap-2",
-            theme === 'light' 
-              ? "bg-amber-500 text-white hover:bg-amber-600" 
-              : "bg-amber-600 text-white hover:bg-amber-500",
-            status === 'migrating' && "opacity-70 cursor-wait"
-        )}
-      >
-        {status === 'migrating' ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
-        {status === 'migrating' ? t('common.moving_btn') : t('common.migrate_btn')}
+    <section className="space-y-4 border border-stone-300 p-5 dark:border-stone-800">
+      <h2 className="font-serif text-xl font-bold">{t('admin.migration.title')}</h2>
+      <p className="text-sm opacity-70">{t('admin.migration.desc')}</p>
+      <label className="flex items-start gap-3 text-sm cursor-pointer">
+        <input type="checkbox" checked={confirmed} onChange={e=>setConfirmed(e.target.checked)} disabled={busy} className="mt-0.5 h-4 w-4 accent-gold-600"/>
+        {t('admin.migration.confirm')}
+      </label>
+      <button type="button" onClick={migrate} disabled={!confirmed||busy} className="border border-stone-900 px-5 py-2.5 text-xs font-bold uppercase tracking-widest transition-colors hover:bg-stone-900 hover:text-stone-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-stone-400 dark:hover:bg-stone-50 dark:hover:text-stone-950">
+        {busy ? t('admin.migration.submitting') : t('admin.migration.submit')}
       </button>
-    </div>
+      {message && <p role="status" className="text-sm">{message}</p>}
+    </section>
   );
 }

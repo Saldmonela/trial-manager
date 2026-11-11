@@ -3,15 +3,18 @@ import { AlertTriangle } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import Modal from './Modal';
+import { useAsyncForm } from '../../hooks/useAsyncForm';
 import { cn } from '../../utils';
 
 export default function DeleteMemberConfirmModal({ isOpen, onClose, onConfirm, memberName }) {
   const { theme } = useTheme();
+  const { busy, error, run } = useAsyncForm();
   const { t } = useLanguage();
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={null} maxWidth="max-w-sm">
+    <Modal isOpen={isOpen} onClose={() => { if (!busy) onClose(); }} title={null} maxWidth="max-w-sm">
       <div className="text-center">
+        {error && <p role="alert" className="text-red-600">{error}</p>}
         <div className="flex justify-center mb-6">
           <div className={cn("p-4 rounded-full", theme === 'light' ? "bg-red-100 text-red-600" : "bg-red-900/20 text-red-500")}>
             <AlertTriangle className="w-8 h-8" />
@@ -29,12 +32,14 @@ export default function DeleteMemberConfirmModal({ isOpen, onClose, onConfirm, m
 
         <div className="flex flex-col gap-3">
           <button
-            onClick={onConfirm}
+            disabled={busy}
+            onClick={() => run(onConfirm)}
             className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold text-xs uppercase tracking-widest transition-colors"
           >
             {t('dashboard.delete_modal.confirm_delete_member') || 'Yes, Delete Member'}
           </button>
           <button
+            disabled={busy}
             onClick={onClose}
             className={cn(
               "w-full py-3 font-bold text-xs uppercase tracking-widest transition-colors",

@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { generateId } from '../../lib/familyUtils';
+import { generateId, EXPIRY_PRESETS, addMonthsISODate } from '../../lib/familyUtils';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
+import { useAsyncForm } from '../../hooks/useAsyncForm';
 import { cn } from '../../utils';
 
 export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
   const { theme } = useTheme();
+  const { busy, error, run } = useAsyncForm();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
     name: '',
@@ -17,20 +19,16 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
     expiryDate: '',
   });
 
+  // Member baru: langganan mulai hari ini, jadi basis preset = hari ini.
   const setExpiryPreset = (months) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + months);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    setFormData((prev) => ({ ...prev, expiryDate: `${year}-${month}-${day}` }));
+    setFormData((prev) => ({ ...prev, expiryDate: addMonthsISODate(new Date(), months) }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.email) return;
     
-    onAdd(familyId, {
+    const saved = await run(() => onAdd(familyId, {
       id: generateId(),
       name: formData.name,
       email: formData.email,
@@ -38,15 +36,17 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
       addedAt: new Date().toISOString(),
       memberType: formData.memberType,
       expiryDate: formData.memberType === 'pribadi' ? null : (formData.expiryDate || null),
-    });
-    
+    }));
+    if (!saved) return;
     setFormData({ name: '', email: '', storageUsed: '', memberType: 'pembeli', expiryDate: '' });
     onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.add_member_title')}>
+    <Modal isOpen={isOpen} onClose={() => { if (!busy) onClose(); }} title={t('dashboard.form.add_member_title')}>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {error && <p role="alert" className="text-red-600">{error}</p>}
+        <fieldset disabled={busy} className="space-y-6">
         <FormField
           label={t('dashboard.form.member_name_label')}
           value={formData.name}
@@ -65,8 +65,7 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
 
         <FormField
           label={`${t('dashboard.form.storage_label')} (GB)`}
-          type="number"
-          min="0"
+          type="number" min="0"
           step="any"
           value={formData.storageUsed}
           onChange={(e) => {
@@ -96,12 +95,8 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
             />
-            <div className="flex gap-2 justify-start mt-1">
-              {[
-                { label: '+1 Bulan', months: 1 },
-                { label: '+3 Bulan', months: 3 },
-                { label: '+6 Bulan', months: 6 },
-              ].map((p) => (
+            <div className="flex flex-wrap gap-2 justify-start mt-1">
+              {EXPIRY_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   type="button"
@@ -131,6 +126,7 @@ export default function AddMemberModal({ isOpen, onClose, onAdd, familyId }) {
         >
           {t('dashboard.family_card.add_member')}
         </button>
+        </fieldset>
       </form>
     </Modal>
   );

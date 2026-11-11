@@ -4,9 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
 import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../lib/familyUtils';
-import { useLocalStorage } from '../hooks/useLocalStorage';
-import { getUpgradeServiceObject } from '../lib/upgradeService';
-import { useSupabaseData, useAppSetting, updateSetting, useJoinRequests } from '../hooks/useSupabaseData';
+import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
 import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
@@ -17,7 +15,6 @@ import DashboardHeader from './dashboard/DashboardHeader';
 import MetricsRow from './dashboard/MetricsRow';
 import FiltersBar from './dashboard/FiltersBar';
 import FamiliesGrid from './dashboard/FamiliesGrid';
-import ServicesSection from './dashboard/ServicesSection';
 
 const AddFamilyModal = lazy(() => import('./modals/AddFamilyModal'));
 const EditFamilyModal = lazy(() => import('./modals/EditFamilyModal'));
@@ -25,11 +22,9 @@ const AddMemberModal = lazy(() => import('./modals/AddMemberModal'));
 const EditMemberModal = lazy(() => import('./modals/EditMemberModal'));
 const DeleteConfirmModal = lazy(() => import('./modals/DeleteConfirmModal'));
 const DeleteMemberConfirmModal = lazy(() => import('./modals/DeleteMemberConfirmModal'));
-const OrderManagementModal = lazy(() => import('./modals/OrderManagementModal'));
 const MigrationTool = lazy(() => import('./MigrationTool'));
 const TutorialModal = lazy(() => import('./TutorialModal'));
 const SettingsModal = lazy(() => import('./modals/SettingsModal'));
-const EditServiceModal = lazy(() => import('./modals/EditServiceModal'));
 import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
@@ -41,7 +36,8 @@ export default function Dashboard({ onLogout }) {
 
   const { 
     families, 
-    loading, 
+    loading,
+    refreshing, error: familiesError, refetch: refetchFamilies,
     addFamily, 
     updateFamily, 
     deleteFamily, 
@@ -50,13 +46,14 @@ export default function Dashboard({ onLogout }) {
     removeMember,
     cancelSale
   } = useSupabaseData();
-  const { joinRequests: allOrders, refetch: refetchOrders, updateStatus } = useJoinRequests();
   const { toasts, addToast, removeToast } = useToast();
-  const pendingCount = useMemo(() => allOrders.filter(r => r.status === 'pending').length, [allOrders]);
 
   // --- Google Drive integration (kuota asli di kartu) ---
   const {
     accounts: connectedAccounts,
+    justConnected,
+    clearJustConnected,
+    connectGoogleDrive, error: driveError,
     syncQuota,
     syncAll,
     disconnect: disconnectDrive,
@@ -81,16 +78,16 @@ export default function Dashboard({ onLogout }) {
   }, [searchParams, addToast, refetchAccounts, navigate]);
 
   const handleConnectDrive = useCallback(async (email) => {
-    if (!supabase) return;
-    const { data, error } = await supabase.functions.invoke('drive-connect-url', {
-      body: { redirectTo: '/admin', origin: window.location.origin, loginHint: email || '' },
-    });
-    if (error || !data?.url) {
-      addToast('Tidak bisa memulai koneksi Drive', 'error');
-      return;
-    }
-    window.location.href = data.url;
-  }, [addToast]);
+    const result = await connectGoogleDrive('/admin', email || '');
+    if (!result.success) addToast(result.error || 'Koneksi gagal.', 'error');
+    return result;
+  }, [connectGoogleDrive, addToast]);
+
+  const handleConnectDriveForNewFamily = useCallback(async () => {
+    const result = await connectGoogleDrive('/admin', '', 'add-family');
+    if (!result.success) addToast(result.error || 'Koneksi gagal.', 'error');
+    return result;
+  }, [connectGoogleDrive, addToast]);
 
   const handleSyncDrive = useCallback(async (id) => {
     const r = await syncQuota(id);
@@ -107,19 +104,53 @@ export default function Dashboard({ onLogout }) {
     addToast(r.success ? 'Semua Drive ter-sync' : (r.error || 'Sync gagal'), r.success ? 'success' : 'error');
   }, [syncAll, addToast]);
 
-  // Group pending orders by familyId for inline display on cards
-  const pendingOrdersByFamily = useMemo(() => {
-    const map = {};
-    allOrders.filter(r => r.status === 'pending').forEach(order => {
-      const key = order.familyId || '__no_family__';
-      if (!map[key]) map[key] = [];
-      map[key].push(order);
-    });
-    return map;
-  }, [allOrders]);
-
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
-  const [isJoinRequestsOpen, setIsJoinRequestsOpen] = useState(false);
+  const handledDriveToastRef = useRef(null);
+
+  const unlinkedAccounts = useMemo(() => {
+    const usedEmails = new Set();
+    for (const f of families) {
+      if (f.ownerEmail) usedEmails.add(f.ownerEmail.toLowerCase());
+      for (const m of (f.members || [])) {
+        if (m.email) usedEmails.add(m.email.toLowerCase());
+      }
+    }
+    return connectedAccounts.filter(
+      (a) => a.status === 'connected' && a.email && !usedEmails.has(a.email.toLowerCase())
+    );
+  }, [families, connectedAccounts]);
+
+  const autoPrefillAccount = useMemo(() => {
+    if (!justConnected || justConnected.intent !== 'add-family' || loading) return null;
+    const acct = connectedAccounts.find((a) => a.id === justConnected.accountId);
+    if (!acct) return null;
+    const exists = acct.email
+      ? families.some((f) => !f.isBanned && f.ownerEmail?.toLowerCase() === acct.email.toLowerCase())
+      : false;
+    return exists ? null : acct;
+  }, [justConnected, loading, connectedAccounts, families]);
+
+  useEffect(() => {
+    if (!justConnected || loading) return;
+    const acct = connectedAccounts.find((a) => a.id === justConnected.accountId);
+    if (!acct || handledDriveToastRef.current === justConnected.accountId) return;
+    handledDriveToastRef.current = justConnected.accountId;
+
+    if (justConnected.intent === 'add-family') {
+      const existing = acct.email
+        ? families.find((f) => !f.isBanned && f.ownerEmail?.toLowerCase() === acct.email.toLowerCase())
+        : null;
+      if (existing) {
+        addToast(`Akun ${acct.email} sudah terdaftar & Google Drive terhubung`, 'success');
+        clearJustConnected?.();
+      } else {
+        addToast(`Akun ${acct.email || 'Google'} terhubung! Pilih masa aktif & isi password.`, 'success');
+      }
+    } else {
+      addToast('Google Drive berhasil terhubung', 'success');
+      clearJustConnected?.();
+    }
+  }, [justConnected, loading, connectedAccounts, families, clearJustConnected, addToast]);
   const [editFamily, setEditFamily] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);
@@ -136,21 +167,9 @@ export default function Dashboard({ onLogout }) {
   const [showMigration, setShowMigration] = useState(false);
   const [mobileSortOpen, setMobileSortOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  const [isEditServiceOpen, setIsEditServiceOpen] = useState(false);
   
   // Highlighting & Scrolling State
   const [activeHighlight, setActiveHighlight] = useState({ familyId: null, expand: false, matchedEmail: null, role: null });
-
-  // Design Setting
-  const { value: serviceStyle, setValue: setServiceStyle } = useAppSetting('service_card_style', 'editorial');
-
-  // Service Content Settings
-  const { value: upgradePriceSettings } = useAppSetting('upgrade_service_price', 45000);
-  const { value: serviceTitle } = useAppSetting('upgrade_service_title', 'Google AI Pro');
-  const { value: serviceDesc } = useAppSetting('upgrade_service_desc', 'Upgrade your personal account to premium status. Enjoy all benefits without joining a family group.');
-  const { value: serviceFeaturesRaw } = useAppSetting('upgrade_service_features', JSON.stringify(['Private Account', 'Full Warranty', 'Instant Activation']));
-  const { value: paymentType } = useAppSetting('upgrade_payment_type', 'One-Time Payment');
-  const { value: validity } = useAppSetting('upgrade_validity', 'Lifetime Validity');
 
   const sortOptions = [
     { key: 'created', label: 'ADDED: OLDEST', labelAlt: 'ADDED: NEWEST' },
@@ -166,6 +185,7 @@ export default function Dashboard({ onLogout }) {
         data: { user },
       } = await supabase.auth.getUser();
 
+      if (!user) return;
       const tourKey = `fm_tour_seen_${user.id}`;
       const hasSeen = localStorage.getItem(tourKey);
 
@@ -310,6 +330,7 @@ export default function Dashboard({ onLogout }) {
     } else {
       addToast(result?.error || 'Failed to add family', 'error');
     }
+    return result;
   }, [addFamily, addToast]);
 
   const handleEditFamily = useCallback(async (updatedFamily) => {
@@ -319,6 +340,7 @@ export default function Dashboard({ onLogout }) {
     } else {
       addToast(result?.error || 'Failed to update family', 'error');
     }
+    return result;
   }, [updateFamily, addToast]);
 
   const handleDeleteFamily = useCallback((id) => {
@@ -329,13 +351,15 @@ export default function Dashboard({ onLogout }) {
     if (deleteFamilyId) {
       const familyName = families.find((f) => f.id === deleteFamilyId)?.name || 'Family';
       const result = await deleteFamily(deleteFamilyId);
-      setDeleteFamilyId(null);
       if (result?.success) {
+        setDeleteFamilyId(null);
         addToast(`"${familyName}" deleted!`, 'success');
       } else {
         addToast(result?.error || 'Failed to delete family', 'error');
       }
+      return result;
     }
+    return { success: false, error: "Pilih data terlebih dahulu." };
   }, [deleteFamilyId, families, deleteFamily, addToast]);
 
   const handleAddMember = useCallback(async (familyId, member) => {
@@ -345,6 +369,7 @@ export default function Dashboard({ onLogout }) {
     } else {
       addToast(result?.error || 'Failed to add member', 'error');
     }
+    return result;
   }, [addMember, addToast]);
 
   const handleRemoveMember = useCallback((familyId, memberId) => {
@@ -360,14 +385,16 @@ export default function Dashboard({ onLogout }) {
   const confirmDeleteMember = useCallback(async () => {
     if (deleteMemberData) {
       const { familyId, memberId } = deleteMemberData;
-      setDeleteMemberData(null);
       const result = await removeMember(familyId, memberId);
       if (result?.success) {
+        setDeleteMemberData(null);
         addToast('Member removed!', 'success');
       } else {
         addToast(result?.error || 'Failed to remove member', 'error');
       }
+      return result;
     }
+    return { success: false, error: "Pilih data terlebih dahulu." };
   }, [deleteMemberData, removeMember, addToast]);
 
   const handleUpdateMember = useCallback(async (familyId, memberId, updatedFields) => {
@@ -377,6 +404,7 @@ export default function Dashboard({ onLogout }) {
     } else {
       addToast(result?.error || 'Failed to update member', 'error');
     }
+    return result;
   }, [updateMember, addToast]);
 
   const sortedFamilies = useMemo(() => {
@@ -401,7 +429,28 @@ export default function Dashboard({ onLogout }) {
         const dateB = b.expiryDate ? new Date(b.expiryDate).getTime() : 0;
         comparison = dateA - dateB;
       } else if (sortBy === 'storage') {
-        comparison = (a.storageUsed || 0) - (b.storageUsed || 0);
+        const getStorage = (f) => {
+          const emails = new Set();
+          if (f.ownerEmail) emails.add(f.ownerEmail.toLowerCase());
+          (f.members || []).forEach((m) => m.email && emails.add(m.email.toLowerCase()));
+
+          const accts = (connectedAccounts || []).filter(
+            (acc) => acc.status === 'connected' && acc.email && emails.has(acc.email.toLowerCase())
+          );
+
+          if (accts.length > 0) {
+            const poolUsed = Math.max(...accts.map((acc) => Number(acc.usedBytes) || 0));
+            return poolUsed / (1024 * 1024 * 1024);
+          }
+
+          const ownerStorageUsed = Number(f.storageUsed ?? f.storage_used ?? 0) || 0;
+          const memberSum = (f.members || []).reduce(
+            (s, m) => s + (Number(m.storageUsed ?? m.storage_used ?? 0) || 0),
+            0
+          );
+          return ownerStorageUsed + memberSum;
+        };
+        comparison = getStorage(a) - getStorage(b);
       } else { // created
         const dateA = new Date(a.createdAt).getTime();
         const dateB = new Date(b.createdAt).getTime();
@@ -410,7 +459,7 @@ export default function Dashboard({ onLogout }) {
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [families, filter, sortBy, sortDirection, showBanned]);
+  }, [families, filter, sortBy, sortDirection, showBanned, connectedAccounts]);
 
   const stats = useMemo(() => {
     const activeFamilies = families.filter(f => !f.isBanned);
@@ -423,20 +472,6 @@ export default function Dashboard({ onLogout }) {
     };
   }, [families]);
   
-  // Construct the service object from settings
-  const upgradeService = useMemo(() => {
-    return getUpgradeServiceObject({
-      upgradePriceSettings,
-      serviceTitle,
-      serviceDesc,
-      serviceFeaturesRaw,
-      paymentType,
-      validity
-    });
-  }, [upgradePriceSettings, serviceTitle, serviceDesc, serviceFeaturesRaw, paymentType, validity]);
-
-  const services = useMemo(() => [upgradeService], [upgradeService]);
-
   const expiringSoonCount = useMemo(() => {
     return families.filter((f) => {
       const days = getDaysRemaining(f.expiryDate);
@@ -468,14 +503,29 @@ export default function Dashboard({ onLogout }) {
         onToggleLanguage={toggleLanguage}
         onToggleTheme={toggleTheme}
         onOpenAddFamily={() => setIsAddFamilyOpen(true)}
-        onOpenJoinRequests={() => setIsJoinRequestsOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenStorage={() => navigate('/storage')}
         onSyncAllDrives={handleSyncAllDrives}
-        pendingCount={pendingCount}
       />
 
       <main className="container mx-auto px-6 py-8">
+        {(familiesError || driveError) && (
+          <div role="alert" className="mb-6 flex flex-col gap-3 border border-red-300 bg-red-50 p-4 text-sm text-red-700 sm:flex-row sm:items-center sm:justify-between dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-400">
+            <span>{familiesError || driveError}</span>
+            <button type="button" className="shrink-0 underline underline-offset-4" onClick={() => refetchFamilies()}>{t('admin.load.retry')}</button>
+          </div>
+        )}
+        {/* Refresh otomatis jalan tiap 15 detik. Di luar aliran layout supaya kartu tidak bergeser
+            (layout framer-motion menganimasikan geseran itu), dan baru tampil kalau refresh lebih dari 1 detik. */}
+        <p
+          role="status"
+          className={cn(
+            'pointer-events-none fixed bottom-4 left-4 z-40 border border-stone-300 bg-stone-50 px-3 py-1.5 text-xs text-stone-700 transition-opacity dark:border-stone-700 dark:bg-stone-900 dark:text-stone-300',
+            refreshing ? 'opacity-90 delay-1000 duration-300' : 'opacity-0 duration-0'
+          )}
+        >
+          {refreshing ? t('admin.load.refreshing') : ''}
+        </p>
         <MigrationBanner families={families} />
 
         {showMigration && (
@@ -509,6 +559,9 @@ export default function Dashboard({ onLogout }) {
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
                   setActiveIndex(-1);
+                  if (e.target.value.trim() === '') {
+                    setSearchResult(null);
+                  }
                 }}
                 onKeyDown={handleKeyDown}
                 placeholder={t('dashboard.search_placeholder')}
@@ -648,23 +701,6 @@ export default function Dashboard({ onLogout }) {
           onToggleBanned={() => setShowBanned(prev => !prev)}
         />
 
-        <ServicesSection 
-          services={services}
-          theme={theme}
-          style={serviceStyle}
-          isAdmin={true}
-          onToggleStyle={async () => {
-             const prevStyle = serviceStyle;
-             const newStyle = serviceStyle === 'editorial' ? 'modern' : 'editorial';
-             setServiceStyle(newStyle); // Optimistic
-             const result = await updateSetting('service_card_style', newStyle);
-             if (!result.success) {
-               setServiceStyle(prevStyle); // Rollback on failure
-             }
-          }}
-          onRequest={() => setIsEditServiceOpen(true)}
-        />
-
         <FamiliesGrid
           theme={theme}
           t={t}
@@ -683,29 +719,9 @@ export default function Dashboard({ onLogout }) {
           onCancelSale={async (familyId) => {
             const result = await cancelSale(familyId);
             if (result.success) {
-              await refetchOrders();
               addToast('Sale cancelled! Account is now available again.', 'success');
             } else {
               addToast(`Failed to cancel sale: ${result.error}`, 'error');
-            }
-          }}
-          pendingOrdersByFamily={pendingOrdersByFamily}
-          onApproveOrder={async (requestId, request) => {
-            const result = await updateStatus(requestId, 'approved');
-            if (result?.success !== false) {
-              await refetchOrders();
-              addToast(`✅ Order dari ${request.name} approved!`, 'success');
-            } else {
-              addToast(`Gagal approve: ${result?.error || 'Unknown error'}`, 'error');
-            }
-          }}
-          onRejectOrder={async (requestId, request) => {
-            const result = await updateStatus(requestId, 'rejected');
-            if (result?.success !== false) {
-              await refetchOrders();
-              addToast(`❌ Order dari ${request.name} rejected.`, 'error');
-            } else {
-              addToast(`Gagal reject: ${result?.error || 'Unknown error'}`, 'error');
             }
           }}
           highlightedFamilyId={activeHighlight.familyId}
@@ -719,9 +735,18 @@ export default function Dashboard({ onLogout }) {
       </main>
 
       <Suspense fallback={null}>
-        <AddFamilyModal isOpen={isAddFamilyOpen} onClose={() => setIsAddFamilyOpen(false)} onAdd={handleAddFamily} />
-
-        <OrderManagementModal isOpen={isJoinRequestsOpen} onClose={() => setIsJoinRequestsOpen(false)} />
+        <AddFamilyModal
+          isOpen={isAddFamilyOpen || Boolean(autoPrefillAccount)}
+          onClose={() => {
+            setIsAddFamilyOpen(false);
+            handledDriveToastRef.current = null;
+            clearJustConnected?.();
+          }}
+          onAdd={handleAddFamily}
+          prefillAccount={autoPrefillAccount}
+          unlinkedAccounts={unlinkedAccounts}
+          onConnectGoogle={handleConnectDriveForNewFamily}
+        />
 
         <SettingsModal
           isOpen={isSettingsOpen}
@@ -733,11 +758,6 @@ export default function Dashboard({ onLogout }) {
           session={supabase ? session : null}
         />
         
-        <EditServiceModal 
-          isOpen={isEditServiceOpen} 
-          onClose={() => setIsEditServiceOpen(false)} 
-        />
-
         <EditFamilyModal isOpen={!!editFamily} onClose={() => setEditFamily(null)} onSave={handleEditFamily} family={editFamily} />
 
         <AddMemberModal
@@ -753,6 +773,7 @@ export default function Dashboard({ onLogout }) {
           onUpdate={handleUpdateMember}
           familyId={editMemberData?.familyId}
           member={editMemberData?.member}
+          families={families}
         />
 
         <DeleteConfirmModal

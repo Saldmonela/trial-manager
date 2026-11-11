@@ -2,27 +2,25 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '../context/ThemeContext';
 import { useLanguage } from '../context/LanguageContext';
+import Modal from './modals/Modal';
 import { cn } from '../utils';
 import { 
   ChevronRight, ChevronLeft, X, Sparkles, 
-  BarChart3, Crown, Key, Users, SlidersHorizontal,
-  Inbox, LayoutGrid, Settings
+  BarChart3, LayoutGrid, Settings
 } from 'lucide-react';
 
-const STEP_ICONS_PUBLIC = [BarChart3, Crown, Key, Users, SlidersHorizontal];
-const STEP_ICONS_ADMIN = [BarChart3, Inbox, LayoutGrid, Settings];
+const STEP_ICONS = [BarChart3, LayoutGrid, Settings];
 
-export default function TutorialModal({ onClose, publicMode = false }) {
+export default function TutorialModal({ onClose }) {
   const { theme } = useTheme();
   const { t } = useLanguage();
   const [currentStep, setCurrentStep] = useState(-1); // -1 = Welcome
   const isDark = theme === 'dark';
 
-  const mode = publicMode ? 'public' : 'admin';
-  const tutorial = t(`tutorial.${mode}`);
+  const tutorial = t('tutorial.admin');
   const steps = tutorial?.steps || [];
   const welcome = tutorial?.welcome || {};
-  const icons = publicMode ? STEP_ICONS_PUBLIC : STEP_ICONS_ADMIN;
+  const icons = STEP_ICONS;
 
   const handleNext = () => {
     if (currentStep < steps.length - 1) {
@@ -47,13 +45,7 @@ export default function TutorialModal({ onClose, publicMode = false }) {
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      {/* Backdrop */}
-      <div 
-        className="absolute inset-0 bg-black/70 backdrop-blur-sm" 
-        onClick={onClose} 
-      />
-      
+    <Modal isOpen onClose={onClose} title={null} ariaLabel="Panduan penggunaan" maxWidth="max-w-lg">
       {/* Modal */}
       <div className={cn(
         "relative z-10 w-[92%] max-w-lg overflow-hidden shadow-2xl",
@@ -225,6 +217,6 @@ export default function TutorialModal({ onClose, publicMode = false }) {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render as rtlRender, screen } from '@testing-library/react';
+import { render as rtlRender, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import AdminRoute from '../AdminRoute';
 
@@ -27,7 +27,6 @@ function renderWithRouter(initialRoute = '/admin') {
           }
         />
         <Route path="/login" element={<div>Login Page</div>} />
-        <Route path="/dashboard" element={<div>Dashboard Page</div>} />
       </Routes>
     </MemoryRouter>,
   );
@@ -49,16 +48,20 @@ describe('AdminRoute', () => {
     expect(screen.getByText('Admin Content')).toBeInTheDocument();
   });
 
-  it('redirects to /dashboard when user is authenticated but not admin', () => {
+  it('shows a no-access screen with sign-out when user is authenticated but not admin', () => {
+    const signOut = vi.fn();
     mockUseAuth.mockReturnValue({
-      session: { user: { id: 'user-2' } },
+      session: { user: { id: 'user-2', email: 'visitor@example.test' } },
       isAdmin: false,
       isLoading: false,
+      signOut,
     });
 
     renderWithRouter();
     expect(screen.queryByText('Admin Content')).not.toBeInTheDocument();
-    expect(screen.getByText('Dashboard Page')).toBeInTheDocument();
+    expect(screen.getByText(/visitor@example\.test bukan akun admin/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Keluar' }));
+    expect(signOut).toHaveBeenCalledTimes(1);
   });
 
   it('redirects to /login when no session exists', () => {

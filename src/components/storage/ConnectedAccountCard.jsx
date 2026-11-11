@@ -45,16 +45,12 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
 
   const handleSync = async () => {
     setSyncing(true);
-    await onSync?.(account.id);
-    setSyncing(false);
+    try { await onSync?.(account.id); } finally { setSyncing(false); }
   };
 
   const handleDisconnect = async () => {
     setRemoving(true);
-    await onDisconnect?.(account.id);
-    // Bila sukses, kartu hilang (parent menghapus dari list); reset bila masih ada.
-    setRemoving(false);
-    setConfirming(false);
+    try { const result = await onDisconnect?.(account.id); if (result?.success) setConfirming(false); } finally { setRemoving(false); }
   };
 
   return (

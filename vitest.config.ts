@@ -1,6 +1,7 @@
 /// <reference types="vitest/config" />
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { fileURLToPath } from 'node:url';
 
 export default defineConfig({
   plugins: [react()],
@@ -8,7 +9,7 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./src/test/setup.ts'],
-    include: ['src/**/*.test.{ts,tsx}'],
+    include: ['src/**/*.test.{ts,tsx,js,jsx}'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],
@@ -22,7 +23,7 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@': new URL('./src/', import.meta.url).pathname,
+      '@': fileURLToPath(new URL('./src/', import.meta.url)),
     },
   },
 });

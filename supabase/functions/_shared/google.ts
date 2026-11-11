@@ -1,6 +1,7 @@
 // Helper Google OAuth 2.0 + Drive API (quota only).
 // Scope minimal untuk membaca storageQuota via about.get = drive.metadata.readonly (non-sensitive).
 
+import { googleJson } from './drive-errors.ts';
 const AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
@@ -89,10 +90,7 @@ export async function exchangeCode(code: string): Promise<GoogleTokens> {
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!res.ok) {
-    throw new Error(`Token exchange failed: ${res.status} ${await res.text()}`);
-  }
-  return await res.json();
+  return await googleJson(res);
 }
 
 export async function refreshAccessToken(
@@ -109,28 +107,21 @@ export async function refreshAccessToken(
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body,
   });
-  if (!res.ok) {
-    throw new Error(`Token refresh failed: ${res.status} ${await res.text()}`);
-  }
-  return await res.json();
+  return await googleJson(res);
 }
 
 export async function getUserInfo(accessToken: string): Promise<GoogleProfile> {
   const res = await fetch(USERINFO_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) throw new Error(`UserInfo failed: ${res.status}`);
-  return await res.json();
+  return await googleJson(res);
 }
 
 export async function getDriveQuota(accessToken: string): Promise<QuotaRow> {
   const res = await fetch(ABOUT_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
-  if (!res.ok) {
-    throw new Error(`Drive about.get failed: ${res.status} ${await res.text()}`);
-  }
-  const json = await res.json();
+  const json = await googleJson(res);
   return computeQuota(json.storageQuota ?? {});
 }
 

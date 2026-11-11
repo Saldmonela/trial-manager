@@ -77,15 +77,17 @@ export default function StoragePage() {
   // (b) agregat pool-aware: 1 family = 1 pool Google One (limit dihitung sekali).
   const [ownerEmails, setOwnerEmails] = useState(() => new Set()); // union semua email tertaut
   const [familyGroups, setFamilyGroups] = useState([]); // array of Set<email> per family
+  const [familyLinkError, setFamilyLinkError] = useState("");
   const [ownersLoaded, setOwnersLoaded] = useState(false);
   useEffect(() => {
     if (!supabase) return;
     let active = true;
     (async () => {
-      const { data: fams } = await supabase
+      const { data: fams, error: familyError } = await supabase
         .from('families')
         .select('id, owner_email, members(email)');
       if (!active) return;
+      if (familyError) { setFamilyLinkError("Status tautan family tidak dapat dimuat."); return; }
       const union = new Set();
       const groups = [];
       (fams || []).forEach((f) => {
@@ -215,6 +217,7 @@ export default function StoragePage() {
           </div>
 
           <div className="flex items-center gap-2 md:gap-3 w-full md:w-auto justify-center md:justify-end">
+            {import.meta.env.DEV && (
             <button
               onClick={() => setShowSimulator((v) => !v)}
               title="Preview / simulasi warna"
@@ -228,6 +231,7 @@ export default function StoragePage() {
               <FlaskConical className="w-4 h-4" />
               <span className="hidden md:inline">Preview</span>
             </button>
+            )}
             {accounts.length > 0 && (
               <button
                 onClick={handleSyncAll}
@@ -251,27 +255,27 @@ export default function StoragePage() {
         <div className={cn('flex items-start gap-3 border px-4 py-3 text-sm', isDark ? 'border-stone-800 bg-stone-900/50 text-stone-400' : 'border-stone-200 bg-white text-stone-600')}>
           <Info className="w-4 h-4 mt-0.5 shrink-0 text-gold-500" />
           <p>
-            Ini halaman <b>ringkasan</b>: total kuota gabungan semua akun + tempat mengelola akun
+            Halaman ini menampilkan kuota <b>per akun</b> dan koneksi
             yang belum tertaut family. Untuk menghubungkan Drive ke family tertentu, gunakan tombol
-            <b> Connect</b> di kartu family pada dashboard. Akun bertanda <b>Not linked to a family</b>
+            <b> Connect</b> di kartu family pada dashboard. Akun bertanda <b>Not linked to a family</b>{' '}
             belum cocok dengan email owner mana pun.
           </p>
         </div>
 
         <AnimatePresence>
-          {showSimulator && (
+          {import.meta.env.DEV && showSimulator && (
             <StoragePreviewPanel theme={theme} pct={simPct} onChange={setSimPct} onClose={() => setShowSimulator(false)} />
           )}
         </AnimatePresence>
 
-        {error && (
+        {(error || familyLinkError) && (
           <div className="border border-red-500/40 bg-red-500/10 text-red-500 px-4 py-3 text-sm">
-            {error}
+            {error || familyLinkError}
           </div>
         )}
 
         {accounts.length > 0 && (
-          <StorageAggregateCard theme={theme} aggregate={poolAggregate} simulatePct={showSimulator ? simPct : null} />
+          <StorageAggregateCard theme={theme} aggregate={poolAggregate} simulatePct={import.meta.env.DEV && showSimulator ? simPct : null} />
         )}
 
         <section>
@@ -327,7 +331,7 @@ export default function StoragePage() {
                     linkedToFamily={!ownersLoaded || ownerEmails.has(account.email?.toLowerCase())}
                     onSync={handleSync}
                     onDisconnect={handleDisconnect}
-                    simulatePct={showSimulator ? simPct : null}
+                    simulatePct={import.meta.env.DEV && showSimulator ? simPct : null}
                   />
                 ))}
               </AnimatePresence>

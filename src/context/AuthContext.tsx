@@ -1,6 +1,6 @@
+/// <reference types="vite/client" />
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase, supabasePublic } from '../supabaseClient';
+import { supabase } from '../supabaseClient';
 import type { AuthContextValue, UserProfile, UserRole } from '../types';
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -8,8 +8,7 @@ const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<any | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const navigate = useNavigate();
+  const [isLoading, setIsLoading] = useState(Boolean(supabase));
 
   const user = session?.user ?? null;
   const role: UserRole = profile?.role ?? 'public';
@@ -44,33 +43,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  /** Claim orphaned guest data after login */
-  const claimData = useCallback(async (userId: string) => {
-    if (!supabase) return;
-    try {
-      const guestFamilyIds = JSON.parse(localStorage.getItem('fm_guest_family_ids') || '[]');
-      if (guestFamilyIds.length === 0) return;
-
-      const { error } = await supabase
-        .from('families')
-        .update({ user_id: userId })
-        .in('id', guestFamilyIds)
-        .is('user_id', null);
-
-      if (!error) {
-        localStorage.removeItem('fm_guest_family_ids');
-      }
-    } catch (e) {
-      console.error('Error claiming data:', e);
-    }
-  }, []);
-
   const signInWithGoogle = useCallback(async () => {
     if (!supabase) return;
-    await supabase.auth.signInWithOAuth({
+    const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo: window.location.origin + '/admin' },
     });
+    if (error) throw new Error('Login Google tidak dapat dimulai. Coba lagi.');
+  }, []);
+
+  // Login email/password untuk testing lokal. UI-nya sengaja hanya dirender saat
+  // `import.meta.env.DEV` (lihat LoginPage) supaya halaman login produksi tetap
+  // Google-only. Tidak ada signUp di sini — akun dibuat manual di dashboard Supabase.
+  const signInWithPassword = useCallback(async (email: string, password: string) => {
+    // Gerbang ditegakkan di sini, bukan cuma di UI: kalau form-nya suatu saat dirender
+    // tanpa syarat, build produksi tetap menolak. Hapus baris ini kalau memang mau aktif.
+    if (!import.meta.env.DEV) return { success: false, error: 'Login email hanya tersedia di dev build' };
+    if (!supabase) return { success: false, error: 'Supabase belum dikonfigurasi' };
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) return { success: false, error: error.message };
+    return { success: true };
   }, []);
 
   const signOut = useCallback(async () => {
@@ -86,25 +78,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    console.log('[AuthContext] useEffect mount. supabase:', !!supabase);
     if (!supabase) {
-      setIsLoading(false);
       return;
     }
 
     let mounted = true;
-    let initialLoadComplete = false;
+    let generation = 0;
+    let currentUserId: string | null = null;
 
     // Safety timeout — absolute last resort
     const timeout = setTimeout(() => {
-      console.log('[AuthContext] timeout hit! forcing isLoading = false');
       if (mounted) setIsLoading(false);
     }, 8000);
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, s) => {
+      (_event, s) => {
         if (!mounted) return;
-        console.log('[AuthContext] auth event:', event, 'user:', s?.user?.email);
+        const current = ++generation;
 
         // CRITICAL: Defer processing with setTimeout(0).
         // On page refresh, Supabase fires SIGNED_IN from inside its internal
@@ -112,34 +102,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // in this callback will deadlock the SDK. setTimeout(0) escapes the
         // internal callback chain, allowing queries to execute normally.
         setTimeout(async () => {
-          if (!mounted) return;
+          if (!mounted || current !== generation) return;
 
+          const nextUserId = s?.user?.id ?? null;
+          if (nextUserId !== currentUserId) {
+            currentUserId = nextUserId; setProfile(null); setIsLoading(Boolean(nextUserId));
+          }
           setSession(s);
 
           if (s?.user) {
-            console.log('[AuthContext] fetching profile for:', s.user.id);
             const p = await fetchProfile(s.user.id);
-            console.log('[AuthContext] profile result:', p);
 
-            if (mounted) {
+            if (mounted && current === generation) {
               setProfile(p);
             }
 
-            if (event === 'SIGNED_IN') {
-              console.log('[AuthContext] SIGNED_IN — claiming guest data');
-              await claimData(s.user.id);
-            }
           } else {
-            console.log('[AuthContext] no user — clearing profile');
             if (mounted) {
               setProfile(null);
             }
           }
 
-          // Unlock UI after the FIRST event is fully processed
-          if (!initialLoadComplete && mounted) {
-            initialLoadComplete = true;
-            console.log('[AuthContext] ✅ first event done — isLoading = false');
+          // Token refresh keeps the current profile while revalidating it.
+          if (mounted && current === generation) {
             setIsLoading(false);
             clearTimeout(timeout);
           }
@@ -148,7 +133,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     );
 
     return () => {
-      console.log('[AuthContext] unmounting');
       mounted = false;
       subscription.unsubscribe();
       clearTimeout(timeout);
@@ -163,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAdmin,
     isLoading,
     signInWithGoogle,
+    signInWithPassword,
     signOut,
   };
 

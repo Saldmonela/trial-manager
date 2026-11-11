@@ -1,6 +1,7 @@
 // AES-256-GCM untuk token OAuth — berjalan SERVER-SIDE (Deno) menggunakan Web Crypto.
 // Kunci 256-bit diturunkan dari TOKEN_ENCRYPTION_KEY via SHA-256 (key derivation),
-// jadi panjang input apa pun aman. Format keluaran: base64( iv(12) + ciphertext+tag ).
+// Input harus secret acak yang kuat; hashing tidak menambah entropi.
+// Format legacy dipertahankan: base64( iv(12) + ciphertext+tag ).
 //
 // Berbeda dengan src/lib/crypto.ts di browser (PBKDF2 dari user-id): di sini kita
 // punya kunci rahasia penuh sebagai Edge Function secret, dan refresh token TIDAK PERNAH

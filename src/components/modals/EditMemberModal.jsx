@@ -1,70 +1,84 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
+import { useAsyncForm } from '../../hooks/useAsyncForm';
 import { cn } from '../../utils';
+import {
+  EXPIRY_PRESETS, addMonthsISODate, getPresetBaseDate,
+  getSlotsUsed, isFamilyFull, MAX_FAMILY_SLOTS,
+} from '../../lib/familyUtils';
 
-export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, member }) {
+function EditMemberForm({ isOpen, onClose, onUpdate, familyId, member, families }) {
   const { theme } = useTheme();
+  const { busy, error, run } = useAsyncForm();
   const { t } = useLanguage();
   const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    storageUsed: '',
-    memberType: 'pembeli',
-    expiryDate: '',
+    name: member?.name || '',
+    email: member?.email || '',
+    storageUsed: member?.storageUsed ?? member?.storage_used ?? '',
+    memberType: member?.memberType || member?.member_type || 'pembeli',
+    expiryDate: (member?.expiryDate || member?.expiry_date || '').slice(0,10),
+    familyId: familyId || '',
   });
 
-  const formatDate = (isoString) => {
-    if (!isoString) return '';
-    const date = new Date(isoString);
-    if (Number.isNaN(date.getTime())) return '';
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
-
-  useEffect(() => {
-    if (member) {
-      setFormData({
-        name: member.name || '',
-        email: member.email || '',
-        storageUsed: member.storageUsed !== undefined ? String(member.storageUsed) : String(member.storage_used || ''),
-        memberType: member.memberType || member.member_type || 'pembeli',
-        expiryDate: formatDate(member.expiryDate || member.expiry_date),
-      });
-    }
-  }, [member]);
+  // Basis preset diambil dari data member asli (bukan formData) supaya stabil:
+  // klik "6 Bulan" lalu "1 Tahun" hasilnya tetap 1 tahun dari awal langganan.
+  const presetBase = useMemo(
+    () => getPresetBaseDate(member?.addedAt || member?.added_at, member?.expiryDate || member?.expiry_date),
+    [member],
+  );
 
   const setExpiryPreset = (months) => {
-    const date = new Date();
-    date.setMonth(date.getMonth() + months);
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    setFormData((prev) => ({ ...prev, expiryDate: `${year}-${month}-${day}` }));
+    setFormData((prev) => ({ ...prev, expiryDate: addMonthsISODate(presetBase, months) }));
   };
 
-  const handleSubmit = (e) => {
+  // Pilihan family tujuan. Yang penuh tetap tampil tapi dikunci (5 slot = batas keras);
+  // yang masa aktifnya lebih pendek dari member ditandai ⚠ tapi tetap boleh dipilih.
+  const familyOptions = useMemo(() => {
+    const memberExpiry = formData.expiryDate ? new Date(formData.expiryDate).getTime() : null;
+    return (families || []).map((f) => {
+      const used = getSlotsUsed(f);
+      const isCurrent = f.id === familyId;
+      const full = !isCurrent && isFamilyFull(f);
+      const expiry = f.expiryDate || f.expiry_date;
+      const tooShort = memberExpiry !== null && expiry && new Date(expiry).getTime() < memberExpiry;
+      const expiryLabel = expiry
+        ? new Date(expiry).toLocaleDateString('id-ID', { month: 'short', year: 'numeric' })
+        : 'tanpa tanggal';
+      return {
+        value: f.id,
+        disabled: full,
+        label: `${tooShort ? '⚠ ' : ''}${f.name || 'Family'} · ${used}/${MAX_FAMILY_SLOTS} · ${expiryLabel}${full ? ' · PENUH' : ''}`,
+      };
+    });
+  }, [families, familyId, formData.expiryDate]);
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!formData.email) return;
 
-    onUpdate(familyId, member.id, {
+    const fields = {
       name: formData.name,
       email: formData.email,
       storageUsed: Number(formData.storageUsed) || 0,
       memberType: formData.memberType,
       expiryDate: formData.memberType === 'pribadi' ? null : (formData.expiryDate || null),
-    });
+    };
+    // Pindah family: expiryDate sengaja tidak disentuh, sisa masa aktif ikut apa adanya.
+    if (formData.familyId && formData.familyId !== familyId) fields.family_id = formData.familyId;
 
-    onClose();
+    const saved = await run(() => onUpdate(familyId, member.id, fields));
+
+    if (saved) onClose();
   };
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title={t('dashboard.form.edit_member_title') || 'Edit Member'}>
+    <Modal isOpen={isOpen} onClose={() => { if (!busy) onClose(); }} title={t('dashboard.form.edit_member_title') || 'Edit Member'}>
       <form onSubmit={handleSubmit} className="space-y-6">
+        {error && <p role="alert" className="text-red-600">{error}</p>}
+        <fieldset disabled={busy} className="space-y-6">
         <FormField
           label={t('dashboard.form.member_name_label')}
           value={formData.name}
@@ -83,8 +97,7 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
 
         <FormField
           label={`${t('dashboard.form.storage_label')} (GB)`}
-          type="number"
-          min="0"
+          type="number" min="0"
           step="any"
           value={formData.storageUsed}
           onChange={(e) => {
@@ -106,6 +119,16 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
           ]}
         />
 
+        {familyOptions.length > 0 && (
+          <FormField
+            label="Family"
+            value={formData.familyId}
+            onChange={(e) => setFormData({ ...formData, familyId: e.target.value })}
+            type="select"
+            options={familyOptions}
+          />
+        )}
+
         {formData.memberType === 'pembeli' && (
           <div className="space-y-2">
             <FormField
@@ -114,12 +137,8 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
               value={formData.expiryDate}
               onChange={(e) => setFormData({ ...formData, expiryDate: e.target.value })}
             />
-            <div className="flex gap-2 justify-start mt-1">
-              {[
-                { label: '+1 Bulan', months: 1 },
-                { label: '+3 Bulan', months: 3 },
-                { label: '+6 Bulan', months: 6 },
-              ].map((p) => (
+            <div className="flex flex-wrap gap-2 justify-start mt-1">
+              {EXPIRY_PRESETS.map((p) => (
                 <button
                   key={p.label}
                   type="button"
@@ -135,6 +154,9 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
                 </button>
               ))}
             </div>
+            <p className={cn("text-[11px]", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
+              Dihitung dari {presetBase.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}
+            </p>
           </div>
         )}
 
@@ -149,7 +171,10 @@ export default function EditMemberModal({ isOpen, onClose, onUpdate, familyId, m
         >
           {t('common.save') || 'Save Changes'}
         </button>
+        </fieldset>
       </form>
     </Modal>
   );
 }
+
+export default function EditMemberModal(props) { return props.isOpen && props.member ? <EditMemberForm key={props.member.id} {...props}/> : null; }

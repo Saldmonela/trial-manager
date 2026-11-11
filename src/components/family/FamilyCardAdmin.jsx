@@ -9,9 +9,6 @@ export default function FamilyCardAdmin({
   onRemoveMember,
   onEditMember,
   onCancelSale,
-  pendingOrders,
-  onApproveOrder,
-  onRejectOrder,
   readOnly,
   onRequest,
   isHighlighted = false,
@@ -31,9 +28,6 @@ export default function FamilyCardAdmin({
       onRemoveMember={onRemoveMember}
       onEditMember={onEditMember}
       onCancelSale={onCancelSale}
-      pendingOrders={pendingOrders}
-      onApproveOrder={onApproveOrder}
-      onRejectOrder={onRejectOrder}
       readOnly={readOnly}
       onRequest={onRequest}
       isHighlighted={isHighlighted}

@@ -1,66 +1,20 @@
-// drive-connect-url (verify_jwt = true)
-// Dipanggil frontend authed. Membuat oauth_state single-use lalu mengembalikan URL consent Google.
-
-import { corsHeaders, jsonResponse } from "../_shared/cors.ts";
-import { serviceClient, userClient } from "../_shared/supabase.ts";
-import { buildConsentUrl } from "../_shared/google.ts";
-
-Deno.serve(async (req: Request) => {
-  const cors = corsHeaders(req);
-  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
-
-  try {
-    // Identitas user dari JWT yang diteruskan supabase.functions.invoke
-    const supabaseUser = userClient(req);
-    const { data: { user }, error: userErr } = await supabaseUser.auth.getUser();
-    if (userErr || !user) return jsonResponse({ error: "Unauthorized" }, 401, cors);
-
-    let redirectTo = "/storage";
-    let origin = "";
-    let loginHint = "";
-    try {
-      const body = await req.json();
-      if (body?.redirectTo) redirectTo = String(body.redirectTo);
-      if (body?.origin) origin = String(body.origin);
-      if (body?.loginHint) loginHint = String(body.loginHint);
-    } catch {
-      // tanpa body — pakai default
-    }
-
-    // Fallback origin dari header Referer (tempat user menekan Connect).
-    if (!origin) {
-      const referer = req.headers.get("Referer") ?? req.headers.get("Origin") ?? "";
-      if (referer) {
-        try {
-          origin = new URL(referer).origin;
-        } catch {
-          // abaikan
-        }
-      }
-    }
-
-    // Simpan origin DI DALAM redirect_to (mis. "http://localhost:5173/storage")
-    // supaya callback bisa mengembalikan user ke situs yang BENAR walau
-    // FRONTEND_URL salah/placeholder.
-    const fullRedirect = origin
-      ? `${origin.replace(/\/$/, "")}${redirectTo.startsWith("/") ? "" : "/"}${redirectTo}`
-      : redirectTo;
-
-    const state = `${crypto.randomUUID()}${crypto.randomUUID().replaceAll("-", "")}`;
-
-    const svc = serviceClient();
-    const { error: insErr } = await svc.from("oauth_states").insert({
-      state,
-      user_id: user.id,
-      provider: "google_drive",
-      redirect_to: fullRedirect,
-    });
-    if (insErr) throw insErr;
-
-    return jsonResponse({ url: buildConsentUrl(state, loginHint) }, 200, cors);
-  } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
-    console.error("[drive-connect-url]", message);
-    return jsonResponse({ error: message }, 500, cors);
-  }
-});
+import { ApiError, checkDb, endpoint, hash, rateLimit, readBody, requireAdmin, textField } from '../_shared/api.ts';
+import { redirectTarget } from '../_shared/origins.ts';
+import { buildConsentUrl } from '../_shared/google.ts';
+import { serviceClient } from '../_shared/supabase.ts';
+Deno.serve(endpoint(async req => {
+  const user = await requireAdmin(req); const body = await readBody(req);
+  const nonce = textField(body.browserNonce, 'Sesi browser', 128);
+  if (!/^[a-f0-9]{64}$/.test(nonce)) throw new ApiError('INVALID_NONCE', 'Sesi browser tidak valid.');
+  let target: string;
+  try { target = redirectTarget(textField(body.origin, 'Origin', 300), textField(body.redirectTo ?? '/storage', 'Tujuan', 32)); }
+  catch { throw new ApiError('INVALID_REDIRECT', 'Tujuan koneksi tidak diizinkan.'); }
+  await rateLimit('drive-connect:' + user.id, 10, 600);
+  const state = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
+  const svc = serviceClient();
+  const { error } = await svc.from('oauth_states').insert({ state, user_id: user.id, provider: 'google_drive', redirect_to: target, browser_nonce_hash: await hash(nonce) });
+  checkDb(error);
+  const { error: cleanError } = await svc.from('oauth_states').delete().lt('expires_at', new Date(Date.now() - 86400000).toISOString());
+  checkDb(cleanError);
+  return { state, url: buildConsentUrl(state, typeof body.loginHint === 'string' ? body.loginHint : undefined) };
+}));

@@ -23,10 +23,6 @@ vi.mock('../../supabaseClient', () => ({
     },
     from: (...args: any[]) => mockFrom(...args),
   },
-  // supabasePublic uses the same mockFrom so profile fetch works in tests
-  supabasePublic: {
-    from: (...args: any[]) => mockFrom(...args),
-  },
 }));
 
 // Mock react-router-dom navigate

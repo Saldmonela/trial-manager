@@ -15,7 +15,6 @@ Components implementing specific business logic, found in `src/components/`.
 
 - **`Dashboard`**: The main view of the application. Integrates `FamilyCard` lists, search functionality, sorting, and modal triggers.
 - **`FamilyCard`**: Displays individual subscription/family details (name, expiry, owner info). Includes actions like Edit, Delete, and View Password.
-- **`LandingPage`**: The public-facing entry page for unauthenticated users.
 - **`MigrationTool`**: A utility component to assist with data migration tasks (e.g., local storage to Supabase).
 - **`TutorialModal`**: An onboarding modal to guide new users.
 

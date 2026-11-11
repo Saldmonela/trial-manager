@@ -1,48 +1,37 @@
 # Trial Manager
 
-A modern, family-focused trial account management application built with **React 19**, **Vite**, **Supabase**, and **Tailwind CSS 4**.
+React 19, Vite, Tailwind and Supabase application for internal subscription
+administration: tracking when each account expires, which accounts still have free
+member slots, and how much Google Drive storage each account has left.
 
-![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![React](https://img.shields.io/badge/React-19-blue)
-![Vite](https://img.shields.io/badge/Vite-7-646CFF)
-![Supabase](https://img.shields.io/badge/Supabase-Auth%20%7C%20DB-3ECF8E)
+It is an admin-only tool. There is no public page: every route requires an admin
+sign-in, and a signed-in non-admin account only sees a "no access" screen. The earlier
+public storefront (catalogue, ordering, customer status lookup) was retired in November
+2026; see [Security rollout](docs/security-rollout.md#storefront-retirement).
 
-## Overview
+Passwords are stored using server encryption and revealed on explicit admin request.
+Legacy credentials remain recoverable with their original owner identifier when their
+ciphertext verifies. Failed decryption never becomes a password replacement.
 
-Trial Manager helps families track shared subscription accounts. It offers a secure, real-time dashboard to manage login credentials, expiry dates, and member access.
+## Development and verification
 
-### Key Features
+Install dependencies with npm ci, then use npm run dev with your local environment.
+Test and verification commands do not read dotenv or contact production:
+npm run lint, npm run typecheck, npm run test:run, npm run test:db,
+npm run test:edge, npm run build:verify.
+npm run check:edge requires Deno 2.
 
-- **Dashboard**: Visual overview of all family subscriptions.
-- **Real-time Updates**: Live synchronization of data across devices.
-- **Security**: Client-side encryption for sensitive password storage.
-- **Member Management**: Track who has access to which account.
+Native concurrent database tests use npm run test:concurrency and a TEST_DATABASE_URL
+pointing only at the loopback database trial_manager_test. CI provisions an isolated
+PostgreSQL 17 service and runs Node 20 plus Deno 2.9.6.
 
-## Documentation
+## Database and deployment
 
-- **[Architecture](./docs/architecture.md)**: High-level overview, tech stack, and database design.
-- **[Component Library](./docs/components.md)**: Details on UI/Feature components and hooks.
-- **[Development Guide](./docs/development.md)**: Setup instructions to run the project locally.
-- **[Testing Strategy](./docs/testing.md)**: How to run and write tests.
-- **[Deployment](./docs/deployment.md)**: Building and deploying to production.
+Read [Security rollout](docs/security-rollout.md) before deployment.
+Use npm run db:bootstrap only to prepare an empty local/staging database.
+Existing production requires a reviewed upgrade, an approved secure backup/restore
+route, matching server configuration and a coordinated frontend/Edge cutover.
 
-## Quick Start
-
-1.  **Clone & Install**:
-
-    ```bash
-    git clone <repo-url>
-    npm install
-    ```
-
-2.  **Setup Environment**:
-    Create `.env` with your Supabase keys (see [Development Guide](./docs/development.md)).
-
-3.  **Run Dev Server**:
-    ```bash
-    npm run dev
-    ```
-
-## License
-
-This project is licensed under the MIT License.
+The four root SQL files are historical references, not deployment alternatives.
+The July manual migration mixes ownership backfill/example probes with DDL and is
+excluded from automatic bootstrap. October hardening replaces its access policies.
