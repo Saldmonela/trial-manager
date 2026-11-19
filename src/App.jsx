@@ -10,6 +10,7 @@ import DashboardAdmin from './components/DashboardAdmin';
 import LoginPage from './components/auth/LoginPage';
 import AdminRoute from './components/auth/AdminRoute';
 import StoragePage from './components/storage/StoragePage';
+import DirectConnectPage from './components/storage/DirectConnectPage';
 import CockpitPage from './components/cockpit/CockpitPage';
 
 function App() {
@@ -36,6 +37,7 @@ function App() {
             ? <Navigate to="/admin" replace />
             : <LoginPage onLogin={signInWithGoogle} onLoginWithPassword={signInWithPassword} />
         } />
+        <Route path="/connect" element={<DirectConnectPage />} />
         <Route path="/admin" element={
           <AdminRoute>
             <DashboardAdmin key={user?.id} onLogout={signOut} />

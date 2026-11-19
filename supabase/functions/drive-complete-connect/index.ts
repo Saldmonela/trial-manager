@@ -1,10 +1,11 @@
-import { ApiError, checkDb, endpoint, hash, readBody, requireAdmin, textField } from '../_shared/api.ts';
+import { ApiError, checkDb, endpoint, hash, readBody, resolveDriveActor, textField } from '../_shared/api.ts';
 import { serviceClient } from '../_shared/supabase.ts';
 import { DRIVE_SCOPES, exchangeCode, getDriveQuota, getUserInfo } from '../_shared/google.ts';
 import { encrypt } from '../_shared/crypto.ts';
 import { expireFamiliesForLowStorage } from '../_shared/low-storage.ts';
 Deno.serve(endpoint(async req => {
-  const actor = await requireAdmin(req); const body = await readBody(req);
+  const body = await readBody(req);
+  const actor = await resolveDriveActor(req, body);
   const state = textField(body.state, 'Sesi', 128); const nonce = textField(body.browserNonce, 'Browser', 128); const code = textField(body.code, 'Code', 2048);
   const svc = serviceClient();
   const { error } = await svc.rpc('app_consume_oauth_state', { p_state: state, p_actor: actor.id, p_nonce_hash: await hash(nonce) }); checkDb(error);
@@ -26,5 +27,13 @@ Deno.serve(endpoint(async req => {
     email: profile.email ?? null,
     totalBytes: quota.total_bytes,
   });
-  return { id: data.id, lowStorageTier: detection.lowStorageTier, expiredFamilies: detection.expiredFamilies };
+  return {
+    id: data.id,
+    email: profile.email ?? null,
+    displayName: profile.name ?? null,
+    totalBytes: quota.total_bytes,
+    usedBytes: quota.used_bytes,
+    lowStorageTier: detection.lowStorageTier,
+    expiredFamilies: detection.expiredFamilies,
+  };
 }));

@@ -14,21 +14,39 @@ import type {
 const SAFE_COLUMNS = 'id,provider,provider_account_id,email,display_name,avatar_url,status,total_bytes,used_bytes,available_bytes,trash_bytes,last_synced_at,created_at';
 type ConnectCompletionData = {
   id?: string;
+  email?: string | null;
+  displayName?: string | null;
+  totalBytes?: number | null;
+  usedBytes?: number;
   intent?: string | null;
   lowStorageTier?: LowStorageTier | null;
   expiredFamilies?: ExpiredFamilySummary[];
 };
 const completions = new Map<string, Promise<ActionResult<ConnectCompletionData>>>();
-export async function beginDriveConnection(path: '/admin' | '/storage' = '/storage', loginHint = '', intent = ''): Promise<ActionResult> {
+export async function beginDriveConnection(
+  path: '/admin' | '/storage' | '/connect' = '/storage',
+  loginHint = '',
+  intent = '',
+  passcode = '',
+): Promise<ActionResult> {
   try {
     const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
-    const result = await invokeApi<{ state?: string; url: string }>('drive-connect-url', { redirectTo: path, origin: window.location.origin, loginHint, browserNonce: nonce });
-    if (!result.success || !result.data?.url) return { success: false, error: result.error || 'Tidak bisa memulai koneksi Drive.' };
+    const trimmedPasscode = passcode.trim();
+    const payload: Record<string, string> = {
+      redirectTo: path,
+      origin: window.location.origin,
+      loginHint,
+      browserNonce: nonce,
+    };
+    if (trimmedPasscode) payload.passcode = trimmedPasscode;
+    const result = await invokeApi<{ state?: string; url: string }>('drive-connect-url', payload);
+    if (!result.success || !result.data?.url) return { success: false, code: result.code, error: result.error || 'Tidak bisa memulai koneksi Drive.' };
     const url = new URL(result.data.url);
     if (url.protocol !== 'https:' || url.hostname !== 'accounts.google.com') return { success: false, error: 'URL Google tidak valid.' };
     if (result.data.state) {
       sessionStorage.setItem('drive-nonce:' + result.data.state, nonce);
       if (intent) sessionStorage.setItem('drive-intent:' + result.data.state, intent);
+      if (trimmedPasscode) sessionStorage.setItem('drive-pin:' + result.data.state, trimmedPasscode);
     }
     window.location.assign(url.href); return { success: true };
   } catch { return { success: false, error: 'Tidak bisa memulai koneksi Drive.' }; }
@@ -42,18 +60,38 @@ export async function completeDriveConnection(): Promise<ActionResult<ConnectCom
   if (completions.has(state)) return completions.get(state)!;
   const nonce = sessionStorage.getItem('drive-nonce:' + state);
   const intent = sessionStorage.getItem('drive-intent:' + state) || null;
+  const passcode = sessionStorage.getItem('drive-pin:' + state) || '';
   if (!nonce) return { success: false, error: 'Selesaikan koneksi dari browser yang memulainya.' };
-  const promise = invokeApi<{ id?: string; lowStorageTier?: LowStorageTier | null; expiredFamilies?: ExpiredFamilySummary[] }>('drive-complete-connect', { state, code, browserNonce: nonce })
+  const payload: Record<string, string> = { state, code, browserNonce: nonce };
+  if (passcode) payload.passcode = passcode;
+  const promise = invokeApi<{
+    id?: string;
+    email?: string | null;
+    displayName?: string | null;
+    totalBytes?: number | null;
+    usedBytes?: number;
+    lowStorageTier?: LowStorageTier | null;
+    expiredFamilies?: ExpiredFamilySummary[];
+  }>('drive-complete-connect', payload)
     .then((res): ActionResult<ConnectCompletionData> => res.success ? {
       success: true,
       data: {
         id: res.data?.id,
+        email: res.data?.email ?? null,
+        displayName: res.data?.displayName ?? null,
+        totalBytes: res.data?.totalBytes ?? null,
+        usedBytes: res.data?.usedBytes,
         intent,
         lowStorageTier: res.data?.lowStorageTier ?? null,
         expiredFamilies: res.data?.expiredFamilies ?? [],
       },
     } : res)
-    .finally(() => { sessionStorage.removeItem('drive-nonce:' + state); sessionStorage.removeItem('drive-intent:' + state); completions.delete(state); });
+    .finally(() => {
+      sessionStorage.removeItem('drive-nonce:' + state);
+      sessionStorage.removeItem('drive-intent:' + state);
+      sessionStorage.removeItem('drive-pin:' + state);
+      completions.delete(state);
+    });
   completions.set(state, promise); return promise;
 }
 function mapRow(r: Record<string, any>): ConnectedAccount {

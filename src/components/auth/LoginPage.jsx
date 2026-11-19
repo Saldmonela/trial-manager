@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { Moon, Sun, Crown } from 'lucide-react';
+import { Moon, Sun, Crown, HardDrive } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
 import { cn } from '../../utils';
@@ -113,6 +114,30 @@ export default function LoginPage({ onLogin, onLoginWithPassword }) {
              </svg>
              {t('auth.continue_google')}
            </button>
+
+           <div className="space-y-3 pt-1">
+             <div className={cn(
+               "flex items-center gap-3 text-[10px] uppercase tracking-widest font-bold",
+               theme === 'light' ? "text-stone-400" : "text-stone-600"
+             )}>
+               <span className={cn("h-px flex-1", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+               Atau
+               <span className={cn("h-px flex-1", theme === 'light' ? "bg-stone-200" : "bg-stone-800")} />
+             </div>
+
+             <Link
+               to="/connect"
+               className={cn(
+                 "w-full flex items-center justify-center gap-2.5 px-6 py-3.5 text-xs font-bold uppercase tracking-widest border transition-colors",
+                 theme === 'light'
+                   ? "border-stone-300 text-stone-800 hover:bg-stone-100"
+                   : "border-stone-700 text-stone-200 hover:bg-stone-800"
+               )}
+             >
+               <HardDrive className="w-4 h-4" />
+               Connect Google Drive (PIN)
+             </Link>
+           </div>
 
            {SHOW_DEV_LOGIN && (
              <form onSubmit={handleDevLogin} className="space-y-3 text-left">

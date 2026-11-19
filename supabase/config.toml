@@ -3,11 +3,12 @@
 project_id = "your-project-ref"
 
 # Edge Functions — verify_jwt:
-#   connect-url & sync-quota  : true  (dipanggil frontend authed; gateway memverifikasi JWT user)
-#   oauth-callback            : false (di-hit oleh redirect Google tanpa JWT; identitas via oauth_states)
+#   drive-connect-url & drive-complete-connect : false (auth dicek di dalam function via resolveDriveActor: JWT admin ATAU DRIVE_CONNECT_PIN)
+#   drive-sync-quota          : true  (dipanggil frontend authed; gateway memverifikasi JWT user)
+#   drive-oauth-callback      : false (di-hit oleh redirect Google tanpa JWT; identitas via oauth_states)
 
 [functions.drive-connect-url]
-verify_jwt = true
+verify_jwt = false
 
 [functions.drive-sync-quota]
 verify_jwt = true
@@ -22,7 +23,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.drive-complete-connect]
-verify_jwt = true
+verify_jwt = false
 
 [functions.drive-disconnect]
 verify_jwt = true
@@ -31,4 +32,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.cockpit-import]
+verify_jwt = true
+
+[functions.drive-connect-pin]
 verify_jwt = true

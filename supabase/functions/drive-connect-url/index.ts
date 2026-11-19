@@ -1,9 +1,10 @@
-import { ApiError, checkDb, endpoint, hash, rateLimit, readBody, requireAdmin, textField } from '../_shared/api.ts';
+import { ApiError, checkDb, endpoint, hash, rateLimit, readBody, resolveDriveActor, textField } from '../_shared/api.ts';
 import { redirectTarget } from '../_shared/origins.ts';
 import { buildConsentUrl } from '../_shared/google.ts';
 import { serviceClient } from '../_shared/supabase.ts';
 Deno.serve(endpoint(async req => {
-  const user = await requireAdmin(req); const body = await readBody(req);
+  const body = await readBody(req);
+  const user = await resolveDriveActor(req, body);
   const nonce = textField(body.browserNonce, 'Sesi browser', 128);
   if (!/^[a-f0-9]{64}$/.test(nonce)) throw new ApiError('INVALID_NONCE', 'Sesi browser tidak valid.');
   let target: string;

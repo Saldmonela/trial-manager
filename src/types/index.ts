@@ -219,7 +219,7 @@ export interface UseConnectedAccountsReturn {
   error: string | null;
   justConnected?: JustConnectedDrive | null;
   clearJustConnected?: () => void;
-  connectGoogleDrive: (path?: '/admin' | '/storage', loginHint?: string, intent?: string) => Promise<ActionResult>;
+  connectGoogleDrive: (path?: '/admin' | '/storage' | '/connect', loginHint?: string, intent?: string, passcode?: string) => Promise<ActionResult>;
   syncQuota: (id: string) => Promise<ActionResult<SyncQuotaData>>;
   syncAll: () => Promise<ActionResult<SyncQuotaData>>;
   disconnect: (id: string) => Promise<ActionResult>;
