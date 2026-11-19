@@ -10,6 +10,7 @@ import DashboardAdmin from './components/DashboardAdmin';
 import LoginPage from './components/auth/LoginPage';
 import AdminRoute from './components/auth/AdminRoute';
 import StoragePage from './components/storage/StoragePage';
+import CockpitPage from './components/cockpit/CockpitPage';
 
 function App() {
   const { session, user, isLoading, signInWithGoogle, signInWithPassword, signOut } = useAuth();
@@ -43,6 +44,11 @@ function App() {
         <Route path="/storage" element={
           <AdminRoute>
             <StoragePage />
+          </AdminRoute>
+        } />
+        <Route path="/cockpit" element={
+          <AdminRoute>
+            <CockpitPage />
           </AdminRoute>
         } />
         <Route path="*" element={<Navigate to="/admin" replace />} />

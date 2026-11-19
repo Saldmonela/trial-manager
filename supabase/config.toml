@@ -29,3 +29,6 @@ verify_jwt = true
 
 [functions.migrate-family-password]
 verify_jwt = true
+
+[functions.cockpit-import]
+verify_jwt = true

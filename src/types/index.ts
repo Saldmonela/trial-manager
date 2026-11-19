@@ -225,3 +225,112 @@ export interface UseConnectedAccountsReturn {
   disconnect: (id: string) => Promise<ActionResult>;
   refetch: () => Promise<void>;
 }
+
+// ─── Cockpit Accounts & Family Placement Types ──────────────────
+
+export type CockpitPlanTier = 'AUTO_FAMILY' | 'PRO' | 'FREE';
+export type CockpitResolvedTier = 'PRO' | 'FREE';
+export type CockpitEligibilityStatus = 'bisa' | 'ban' | 'need_verif' | 'untagged';
+export type CockpitArgonStatus = 'available' | 'missing' | 'unknown';
+
+export interface CockpitQuotaItem {
+  model: string;
+  remaining_pct: number | null;
+  reset_at: string | null;
+}
+
+export interface CockpitAccount {
+  id: string;
+  userId?: string;
+  email: string;
+  planTier: CockpitPlanTier;
+  eligibilityStatus: CockpitEligibilityStatus;
+  argonStatus: CockpitArgonStatus;
+  rawTags: string[];
+  isCurrent: boolean;
+  switchTime: string | null;
+  quotas: CockpitQuotaItem[];
+  availableAiCredits: number | null;
+  notes: string | null;
+  lastSyncedAt: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface CockpitImportAccountInput {
+  email: string;
+  tags: string[];
+  eligibility_status: CockpitEligibilityStatus;
+  argon_status?: CockpitArgonStatus;
+  plan_tier?: CockpitPlanTier;
+  is_current?: boolean;
+  switch_time?: string | null;
+  quotas?: CockpitQuotaItem[];
+  available_ai_credits?: number | null;
+  notes?: string | null;
+}
+
+export interface CockpitImportResult {
+  imported: number;
+  created: number;
+  updated: number;
+  skipped: Array<{ index: number; reason: string }>;
+  synced_at: string;
+}
+
+export interface CockpitFamilyMatch {
+  familyId: string;
+  familyName: string;
+  ownerEmail: string;
+  role: 'owner' | 'member';
+  isActiveFamily: boolean;
+  isBanned: boolean;
+  expiryDate: string | null;
+  daysRemaining: number | null;
+}
+
+export interface CockpitConflictGroup {
+  familyId: string;
+  familyName: string;
+  ownerEmail: string;
+  emails: string[];
+  count: number;
+}
+
+export interface CockpitAccountView {
+  account: CockpitAccount;
+  isActiveEligibility: boolean;
+  isArgonPriority: boolean;
+  argonQuotaPct: number | null;
+  matches: CockpitFamilyMatch[];
+  primaryMatch: CockpitFamilyMatch | null;
+  resolvedTier: CockpitResolvedTier;
+  tierSource: 'family' | 'manual' | 'unassigned';
+  hasConflict: boolean;
+  conflictFamilyNames: string[];
+  isStale: boolean;
+  isFreeCandidate: boolean;
+  isNearExpiryWithQuota: boolean;
+  highestQuotaPct: number | null;
+}
+
+export interface RecommendedFamily {
+  family: Family;
+  slotsUsed: number;
+  slotsAvailable: number;
+  hasLiveDrive: boolean;
+  isUnlimitedDrive: boolean;
+  availableBytes: number;
+  totalBytes: number | null;
+  isStorageLega: boolean;
+  storageLabel: string;
+  daysRemaining: number | null;
+}
+
+export interface CockpitAssignResult {
+  member_id: string;
+  family_id: string;
+  email: string;
+  added_at: string;
+}
+

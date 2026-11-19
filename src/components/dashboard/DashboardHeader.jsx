@@ -1,6 +1,6 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { Plus, Sparkles, Sun, Moon, Settings, HardDrive, RefreshCw } from 'lucide-react';
+import { Plus, Sparkles, Sun, Moon, Settings, HardDrive, RefreshCw, Layers } from 'lucide-react';
 import { cn } from '../../utils';
 
 export default function DashboardHeader({
@@ -13,10 +13,12 @@ export default function DashboardHeader({
   onOpenAddFamily,
   onOpenSettings,
   onOpenStorage,
+  onOpenCockpit,
   onSyncAllDrives,
 }) {
   const location = useLocation();
   const isStorageActive = location.pathname.startsWith('/storage');
+  const isCockpitActive = location.pathname.startsWith('/cockpit');
 
   return (
     <header
@@ -119,6 +121,23 @@ export default function DashboardHeader({
               >
                 <HardDrive className="w-5 h-5" />
               </button>
+
+              {onOpenCockpit && (
+                <button
+                  onClick={() => onOpenCockpit()}
+                  aria-label="Akun Cockpit"
+                  aria-current={isCockpitActive ? 'page' : undefined}
+                  className={cn(
+                    'p-0 w-10 h-10 md:w-8 md:h-8 rounded-full transition-colors flex items-center justify-center shrink-0',
+                    isCockpitActive
+                      ? (theme === 'light' ? 'bg-stone-200 text-gold-600' : 'bg-stone-800 text-gold-400')
+                      : (theme === 'light' ? 'hover:bg-stone-200 text-stone-600' : 'hover:bg-stone-800 text-stone-400')
+                  )}
+                  title="Akun Cockpit"
+                >
+                  <Layers className="w-5 h-5" />
+                </button>
+              )}
 
               {onSyncAllDrives && (
                 <button

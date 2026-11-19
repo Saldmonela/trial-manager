@@ -603,6 +603,7 @@ export default function Dashboard({ onLogout }) {
         onOpenAddFamily={() => setIsAddFamilyOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenStorage={() => navigate('/storage')}
+        onOpenCockpit={() => navigate('/cockpit')}
         onSyncAllDrives={handleSyncAllDrives}
       />
 

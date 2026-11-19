@@ -14,6 +14,7 @@ export async function invokeApi<T = unknown>(name: string, body: object): Promis
         const result = await error.context.json().catch(() => null);
         if (result?.success === false) return result;
         if (typeof result?.error === 'string') return { success: false, code: 'REQUEST_FAILED', error: result.error };
+        if (typeof result?.message === 'string') return { success: false, code: 'REQUEST_FAILED', error: result.message };
       }
       return { success: false, code: 'REQUEST_FAILED', error: 'Permintaan gagal. Coba lagi.' };
     }
