@@ -11,7 +11,7 @@ import {
   isFamilyActiveForPro,
 } from '../cockpitLogic';
 import { validateManualHistoryInput } from '../../hooks/useAccountFamilyHistory';
-import type { AccountFamilyHistoryEntry, CockpitAccount, Family } from '../../types';
+import type { AccountCooldownLock, AccountFamilyHistoryEntry, CockpitAccount, Family } from '../../types';
 
 function makeEntry(
   overrides: Partial<AccountFamilyHistoryEntry> & { id: string; accountEmail: string },
@@ -335,5 +335,52 @@ describe('cooldownLogic — Calendar & 12-Month Google Family Cooldown', () => {
         notes: 'Valid note',
       }),
     ).toBeNull();
+  });
+
+  it('supports manual cooldown lock for already-locked accounts (with or without end date) & allows returning only to last family', () => {
+    const email = 'already-locked@gmail.com';
+    const lockNoDate: AccountCooldownLock = {
+      id: 'lock-1',
+      accountEmail: email,
+      isLocked: true,
+      lockedFamilyId: 'fam-last',
+      lockedFamilyName: 'Family Terakhir #7',
+      lockedFamilyOwnerEmail: 'last@gmail.com',
+      cooldownEndsAt: null,
+      notes: 'Sudah mentok 2x pindah sebelum fitur ada',
+    };
+
+    const summaryNoDate = computeAccountCooldown(email, [], '2026-11-20', null, lockNoDate);
+    expect(summaryNoDate.status).toBe('cooldown_active');
+    expect(summaryNoDate.isManualLock).toBe(true);
+    expect(summaryNoDate.cooldownEndsAt).toBeNull();
+    expect(summaryNoDate.lockedFamilyName).toBe('Family Terakhir #7');
+
+    // Pindah ke Family LAIN -> STOP Kritis
+    const moveOther = evaluateCooldownActionWarning({
+      summary: summaryNoDate,
+      action: 'join',
+      targetFamily: { id: 'fam-other', name: 'Family Lain', ownerEmail: 'other@gmail.com' },
+    });
+    expect(moveOther.level).toBe('critical_cooldown_locked');
+    expect(moveOther.message).toContain('Family Terakhir #7');
+
+    // Kembali ke Family TERAKHIR-nya sendiri -> DIIZINKAN (tidak diblokir)
+    const rejoinLast = evaluateCooldownActionWarning({
+      summary: summaryNoDate,
+      action: 'join',
+      targetFamily: { id: 'fam-last', name: 'Family Terakhir #7', ownerEmail: 'last@gmail.com' },
+    });
+    expect(rejoinLast.level).toBe('none');
+    expect(rejoinLast.isSameFamilyRejoin).toBe(true);
+
+    // Manual lock dengan tanggal bebas di masa lalu -> otomatis pulih
+    const expiredLock: AccountCooldownLock = {
+      ...lockNoDate,
+      cooldownEndsAt: '2026-11-19',
+    };
+    const recovered = computeAccountCooldown(email, [], '2026-11-20', null, expiredLock);
+    expect(recovered.status).toBe('never_joined');
+    expect(recovered.isManualLock).toBe(false);
   });
 });

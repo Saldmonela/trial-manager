@@ -97,6 +97,7 @@ function FamilyCard({
   onDisconnectDrive,
   cockpitAccounts = [],
   historyEntries = [],
+  cooldownLocks = [],
   cooldownByEmail = null,
   historyLoading = false,
   historyError = null,
@@ -247,9 +248,10 @@ function FamilyCard({
       family,
       cockpitAccounts,
       historyEntries,
+      cooldownLocks,
       historyLoadError: historyError,
     });
-  }, [readOnly, isDowngraded, lowStorageTier, family, cockpitAccounts, historyEntries, historyError]);
+  }, [readOnly, isDowngraded, lowStorageTier, family, cockpitAccounts, historyEntries, cooldownLocks, historyError]);
 
   const handleToggleDowngrade = async () => {
     if (!onTogglePlanStatus || planBusy) return;
@@ -757,7 +759,9 @@ function FamilyCard({
                               : "border-red-700/40 bg-white text-red-900 hover:bg-red-100",
                           )}
                         >
-                          Tahan · Bebas {formatDateId(acc.cooldown.cooldownEndsAt)}
+                          {acc.cooldown.cooldownEndsAt
+                            ? `Tahan · Bebas ${formatDateId(acc.cooldown.cooldownEndsAt)}`
+                            : 'Tahan · Hanya Family Ini'}
                         </button>
                       </div>
                     ))}

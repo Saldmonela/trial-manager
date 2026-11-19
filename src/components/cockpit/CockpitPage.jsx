@@ -195,12 +195,15 @@ export default function CockpitPage() {
   } = useCockpitAccounts();
   const {
     entries: historyEntries,
+    locks: cooldownLocks,
     loading: historyLoading,
     error: historyError,
     refetch: refetchHistory,
     addManualHistory,
     updateHistory,
     deleteHistory,
+    upsertManualLock,
+    clearManualLock,
   } = useAccountFamilyHistory();
 
   const [filter, setFilter] = useState('all');
@@ -223,8 +226,9 @@ export default function CockpitPage() {
         connectedAccounts,
         Date.now(),
         historyEntries,
+        cooldownLocks,
       ),
-    [cockpitAccounts, families, connectedAccounts, historyEntries],
+    [cockpitAccounts, families, connectedAccounts, historyEntries, cooldownLocks],
   );
 
   // Deep-link dari Dashboard Admin (Panel Dampak Family Turun FREE -> Cari Family PRO Pengganti)
@@ -1357,6 +1361,7 @@ export default function CockpitPage() {
         accountEmail={historyDrawerEmail}
         families={families}
         historyEntries={historyEntries}
+        cooldownLocks={cooldownLocks}
         historyLoading={historyLoading}
         historyError={historyError}
         onRetryHistory={() => void refetchHistory()}
@@ -1364,6 +1369,8 @@ export default function CockpitPage() {
         onAddManual={addManualHistory}
         onUpdateEntry={updateHistory}
         onDeleteEntry={deleteHistory}
+        onUpsertManualLock={upsertManualLock}
+        onClearManualLock={clearManualLock}
         onFeedback={(msg, type = 'success') => addToast(msg, type)}
       />
 

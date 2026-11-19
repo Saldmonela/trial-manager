@@ -62,18 +62,21 @@ export default function Dashboard({ onLogout }) {
   const { accounts: cockpitAccounts } = useCockpitAccounts();
   const {
     entries: historyEntries,
+    locks: cooldownLocks,
     loading: historyLoading,
     error: historyError,
     refetch: refetchHistory,
     addManualHistory,
     updateHistory,
     deleteHistory,
+    upsertManualLock,
+    clearManualLock,
   } = useAccountFamilyHistory();
   const [historyDrawerEmail, setHistoryDrawerEmail] = useState(null);
 
   const cooldownByEmail = useMemo(
-    () => buildCooldownSummaryMap(historyEntries, families, cockpitAccounts),
-    [historyEntries, families, cockpitAccounts],
+    () => buildCooldownSummaryMap(historyEntries, families, cockpitAccounts, new Date(), cooldownLocks),
+    [historyEntries, families, cockpitAccounts, cooldownLocks],
   );
 
   // --- Google Drive integration (kuota asli di kartu) ---
@@ -594,6 +597,7 @@ export default function Dashboard({ onLogout }) {
           family,
           cockpitAccounts,
           historyEntries,
+          cooldownLocks,
           historyLoadError: historyError,
         });
         if (impact.totalPersonalAccounts === 0) {
@@ -615,7 +619,7 @@ export default function Dashboard({ onLogout }) {
       addToast(result?.error || 'Gagal mengubah status Family. Periksa koneksi dan coba lagi.', 'error');
     }
     return result;
-  }, [setFamilyPlanStatus, cockpitAccounts, historyEntries, historyError, addToast]);
+  }, [setFamilyPlanStatus, cockpitAccounts, historyEntries, cooldownLocks, historyError, addToast]);
 
   const handleUpdateMember = useCallback(async (familyId, memberId, updatedFields) => {
     const result = await updateMember(familyId, memberId, updatedFields);
@@ -993,6 +997,7 @@ export default function Dashboard({ onLogout }) {
           onDisconnectDrive={handleDisconnectDrive}
           cockpitAccounts={cockpitAccounts}
           historyEntries={historyEntries}
+          cooldownLocks={cooldownLocks}
           cooldownByEmail={cooldownByEmail}
           historyLoading={historyLoading}
           historyError={historyError}
@@ -1040,6 +1045,7 @@ export default function Dashboard({ onLogout }) {
           families={families}
           cockpitAccounts={cockpitAccounts}
           historyEntries={historyEntries}
+          cooldownLocks={cooldownLocks}
           historyError={historyError}
           onRetryHistory={() => void refetchHistory()}
         />
@@ -1083,6 +1089,7 @@ export default function Dashboard({ onLogout }) {
           accountEmail={historyDrawerEmail}
           families={families}
           historyEntries={historyEntries}
+          cooldownLocks={cooldownLocks}
           historyLoading={historyLoading}
           historyError={historyError}
           onRetryHistory={() => void refetchHistory()}
@@ -1090,6 +1097,8 @@ export default function Dashboard({ onLogout }) {
           onAddManual={addManualHistory}
           onUpdateEntry={updateHistory}
           onDeleteEntry={deleteHistory}
+          onUpsertManualLock={upsertManualLock}
+          onClearManualLock={clearManualLock}
           onFeedback={(msg, type = 'success') => addToast(msg, type)}
         />
 

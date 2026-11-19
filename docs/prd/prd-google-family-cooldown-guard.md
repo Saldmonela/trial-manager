@@ -538,6 +538,9 @@ Seluruh endpoint membutuhkan `Authorization: Bearer <Admin JWT>` dan diverifikas
 ---
 
 ## Change Log
+- **2026-11-20 — Revisi v1.1 (Penandaan Manual Akun Sudah Terkunci & Aturan Menetap di Family Terakhir):**
+  - Menambahkan tabel `public.account_cooldown_locks` (`202611200002_add_manual_cooldown_locks.sql`) agar akun pribadi lama yang **sudah tidak bisa pindah sebelum fitur ini dibuat** bisa langsung ditandai `Terkunci` dalam 1 klik tanpa harus mengarang riwayat Family lama (tanggal bebas opsional bila lupa).
+  - Menambahkan aturan **"Hanya Bisa Menetap / Kembali di Family Terakhir"**: akun terkunci ditolak dengan Peringatan Tingkat 2 untuk masuk ke Family lain, tetapi tetap diizinkan menetap/kembali ke Family terakhirnya (`isSameFamilyRejoin` + tag `Family Terakhir (Boleh Kembali)` di Drawer Rekomendasi).
 - **2026-11-20 — Konsolidasi Final (v1.0 — Phase 2 & 3 Disetujui):**
   - **Input Langsung User (Owner):** Masalah riil pembatasan pindah Google Family (maks 1x pindah / 12 bulan) + kejadian nyata Family PRO tiba-tiba turun menjadi FREE di tengah jalan; pemilihan Lite PRD menginduk ke `prd-cockpit-quota-family-sync.md`; cakupan khusus Akun Pribadi di Cockpit + Dashboard Admin + status Family turun FREE; peringatan bertingkat + konfirmasi sadar (bisa override dengan alasan) + input/edit riwayat lama manual; target metrik **0 insiden akun pribadi terkunci cooldown 12 bulan**.
   - **Disintesis AI & Disetujui Owner:** Penguncian **OQ-01** (cooldown 12 bulan dihitung dari `joined_at` Family ke-2) & **OQ-02** (re-join Family yang sama tidak dihitung *Switch*), pengecualian `Koreksi Lokal (Non-Switch)` (`BR-04`), mode Fail-Safe saat riwayat gagal dimuat (`NF-04`), UX Shape Mode Operate (`AccountFamilyHistoryDrawer`, `CooldownStatusBadge`, `CooldownGuardNotice`), skema DB `account_family_history` + `families.plan_status` + 4 RPC atomik + integrasi `low-storage.ts`.

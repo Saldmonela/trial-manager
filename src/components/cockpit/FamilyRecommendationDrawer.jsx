@@ -16,7 +16,7 @@ import {
 import { cn } from '../../utils';
 import { MAX_FAMILY_SLOTS } from '../../lib/familyUtils';
 import { revealFamilyPassword } from '../../lib/api';
-import { evaluateCooldownActionWarning } from '../../lib/cooldownLogic';
+import { evaluateCooldownActionWarning, formatDateId, isSameFamilyIdentity } from '../../lib/cooldownLogic';
 import CooldownGuardNotice, {
   validateCooldownGuardState,
 } from '../cooldown/CooldownGuardNotice';
@@ -270,6 +270,29 @@ export default function FamilyRecommendationDrawer({
             </div>
           ) : (
             <>
+              {/* Banner khusus bila akun sudah terkunci cooldown: hanya boleh menetap / kembali di Family terakhir */}
+              {cooldownSummary?.status === 'cooldown_active' && (
+                <div
+                  role="alert"
+                  className={cn(
+                    'border px-3.5 py-3 text-xs leading-relaxed flex items-start gap-2',
+                    isDark
+                      ? 'border-red-500/45 bg-red-950/40 text-red-100'
+                      : 'border-red-700/40 bg-red-50 text-red-950',
+                  )}
+                >
+                  <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>Akun terkunci cooldown 12 bulan:</strong> tidak bisa pindah ke Family lain, hanya bisa menetap atau kembali di{' '}
+                    <strong>{cooldownSummary.lockedFamilyName || 'Family terakhir'}</strong>
+                    {cooldownSummary.cooldownEndsAt
+                      ? ` (bebas ${formatDateId(cooldownSummary.cooldownEndsAt)})`
+                      : ''}
+                    .
+                  </span>
+                </div>
+              )}
+
               {/* US-07: Banner konteks jatah pindah terakhir */}
               {isLastSwitchCandidate && (
                 <div
@@ -307,6 +330,24 @@ export default function FamilyRecommendationDrawer({
                   {recommendations.map((rec, idx) => {
                     const isSelected = rec.family.id === selectedFamilyId;
                     const showTopStableBadge = isLastSwitchCandidate && idx === 0;
+                    const isLockedHomeFamily = Boolean(
+                      cooldownSummary?.status === 'cooldown_active' &&
+                        (cooldownSummary.lockedFamilyId ||
+                          cooldownSummary.lockedFamilyOwnerEmail ||
+                          cooldownSummary.lockedFamilyName) &&
+                        isSameFamilyIdentity(
+                          {
+                            familyId: cooldownSummary.lockedFamilyId,
+                            familyOwnerEmailSnapshot: cooldownSummary.lockedFamilyOwnerEmail,
+                            familyNameSnapshot: cooldownSummary.lockedFamilyName,
+                          },
+                          {
+                            familyId: rec.family.id,
+                            familyOwnerEmailSnapshot: rec.family.ownerEmail ?? null,
+                            familyNameSnapshot: rec.family.name || rec.family.ownerEmail || null,
+                          },
+                        ),
+                    );
                     return (
                       <button
                         key={rec.family.id}
@@ -328,6 +369,18 @@ export default function FamilyRecommendationDrawer({
                             <span className="font-semibold text-sm truncate">
                               {rec.family.name || rec.family.ownerEmail}
                             </span>
+                            {isLockedHomeFamily && (
+                              <span
+                                className={cn(
+                                  'inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold border',
+                                  isDark
+                                    ? 'border-emerald-400/50 bg-emerald-500/20 text-emerald-200'
+                                    : 'border-emerald-700/40 bg-emerald-50 text-emerald-900',
+                                )}
+                              >
+                                Family Terakhir (Boleh Kembali)
+                              </span>
+                            )}
                             {showTopStableBadge && (
                               <span
                                 className={cn(

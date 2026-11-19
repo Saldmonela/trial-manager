@@ -17,6 +17,7 @@ import {
 } from './cockpitParser';
 import { computeAccountCooldown } from './cooldownLogic';
 import type {
+  AccountCooldownLock,
   AccountFamilyHistoryEntry,
   CockpitAccount,
   CockpitAccountView,
@@ -141,11 +142,16 @@ export function buildCockpitOverview(
   connectedAccounts: ConnectedAccount[] = [],
   nowMs = Date.now(),
   historyEntries: AccountFamilyHistoryEntry[] = [],
+  cooldownLocks: AccountCooldownLock[] = [],
 ): CockpitOverviewData {
   // Index semua family berdasarkan email owner dan member (BR-01: case-insensitive + trim)
   const emailToMatches = new Map<string, CockpitFamilyMatch[]>();
   const familyById = new Map<string, Family>();
   const memberAddedAtByKey = new Map<string, string | null>();
+  const lockByEmail = new Map<string, AccountCooldownLock>();
+  for (const lock of cooldownLocks) {
+    lockByEmail.set(normalizeEmail(lock.accountEmail), lock);
+  }
 
   const pushMatch = (rawEmail: string | null | undefined, match: CockpitFamilyMatch) => {
     const normalized = normalizeEmail(rawEmail);
@@ -265,7 +271,13 @@ export function buildCockpitOverview(
         }
       : null;
 
-    const cooldown = computeAccountCooldown(email, historyEntries, nowDate, liveHint);
+    const cooldown = computeAccountCooldown(
+      email,
+      historyEntries,
+      nowDate,
+      liveHint,
+      lockByEmail.get(email) ?? null,
+    );
 
     const syncedTime = account.lastSyncedAt ? new Date(account.lastSyncedAt).getTime() : 0;
     if (syncedTime > latestSyncTime) {

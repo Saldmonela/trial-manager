@@ -434,9 +434,37 @@ export interface AnnotatedHistoryEntry extends AccountFamilyHistoryEntry {
   sequenceNumber: number | null;
 }
 
+export interface AccountCooldownLock {
+  id: string;
+  userId?: string;
+  accountEmail: string;
+  isLocked: boolean;
+  lockedFamilyId: string | null;
+  lockedFamilyName: string | null;
+  lockedFamilyOwnerEmail: string | null;
+  cooldownEndsAt: string | null;
+  notes: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ManualCooldownLockInput {
+  accountEmail: string;
+  lockedFamilyId?: string | null;
+  lockedFamilyName?: string | null;
+  lockedFamilyOwnerEmail?: string | null;
+  cooldownEndsAt?: string | null;
+  notes?: string | null;
+}
+
 export interface AccountCooldownSummary {
   email: string;
   status: CooldownStatus;
+  isManualLock: boolean;
+  manualLock: AccountCooldownLock | null;
+  lockedFamilyId: string | null;
+  lockedFamilyName: string | null;
+  lockedFamilyOwnerEmail: string | null;
   switchesInLast12m: number;
   cooldownEndsAt: string | null;
   cooldownDaysRemaining: number | null;

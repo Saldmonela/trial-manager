@@ -10,16 +10,28 @@ import {
   History,
   RefreshCw,
   Check,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 import { cn } from '../../utils';
 import {
+  addCalendarMonths,
   computeAccountCooldown,
   diffCalendarDays,
   formatDateId,
   formatPartsToIsoDate,
   parseLocalDateParts,
 } from '../../lib/cooldownLogic';
+import { normalizeEmail } from '../../lib/cockpitParser';
 import { validateManualHistoryInput } from '../../hooks/useAccountFamilyHistory';
+
+const LOCK_DATE_PRESETS = [
+  { label: 'Lupa / Tanpa Tanggal', months: null },
+  { label: '+3 Bln', months: 3 },
+  { label: '+6 Bln', months: 6 },
+  { label: '+9 Bln', months: 9 },
+  { label: '+12 Bln', months: 12 },
+];
 
 const LEAVE_REASON_LABELS = {
   still_active: 'Masih Aktif',
@@ -72,6 +84,7 @@ export default function AccountFamilyHistoryDrawer({
   accountEmail,
   families = [],
   historyEntries = [],
+  cooldownLocks = [],
   historyLoading = false,
   historyError = null,
   onRetryHistory,
@@ -79,15 +92,26 @@ export default function AccountFamilyHistoryDrawer({
   onAddManual,
   onUpdateEntry,
   onDeleteEntry,
+  onUpsertManualLock,
+  onClearManualLock,
   onFeedback,
 }) {
-  const [formMode, setFormMode] = useState(null); // null | 'create' | 'edit'
+  const [formMode, setFormMode] = useState(null); // null | 'create' | 'edit' | 'lock'
   const [editingEntry, setEditingEntry] = useState(null);
   const [form, setForm] = useState(() => buildEmptyForm(families));
+  const [lockForm, setLockForm] = useState({
+    familySelectionMode: 'existing_family',
+    lockedFamilyId: '',
+    lockedFamilyName: '',
+    lockedFamilyOwnerEmail: '',
+    cooldownEndsAt: '',
+    notes: '',
+  });
   const [formError, setFormError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const [unlocking, setUnlocking] = useState(false);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -100,7 +124,7 @@ export default function AccountFamilyHistoryDrawer({
   useEffect(() => {
     if (!isOpen) return undefined;
     const onKeyDown = (e) => {
-      if (e.key === 'Escape' && !submitting && !deletingId) {
+      if (e.key === 'Escape' && !submitting && !deletingId && !unlocking) {
         if (formMode) {
           setFormMode(null);
           setEditingEntry(null);
@@ -112,14 +136,130 @@ export default function AccountFamilyHistoryDrawer({
     };
     window.addEventListener('keydown', onKeyDown);
     return () => window.removeEventListener('keydown', onKeyDown);
-  }, [isOpen, submitting, deletingId, formMode, onClose]);
+  }, [isOpen, submitting, deletingId, unlocking, formMode, onClose]);
+
+  const liveActiveHint = useMemo(() => {
+    if (!accountEmail) return null;
+    const norm = normalizeEmail(accountEmail);
+    for (const fam of families) {
+      const m = (fam.members || []).find((mem) => normalizeEmail(mem.email) === norm);
+      if (m) {
+        return {
+          familyId: fam.id,
+          familyName: fam.name || fam.ownerEmail || 'Family Plan',
+          ownerEmail: fam.ownerEmail ?? null,
+          joinedAt: m.addedAt || m.added_at || null,
+        };
+      }
+    }
+    return null;
+  }, [accountEmail, families]);
+
+  const activeManualLock = useMemo(() => {
+    if (!accountEmail) return null;
+    const norm = normalizeEmail(accountEmail);
+    return (cooldownLocks || []).find((l) => normalizeEmail(l.accountEmail) === norm) || null;
+  }, [accountEmail, cooldownLocks]);
 
   const summary = useMemo(() => {
     if (!accountEmail) return null;
-    return computeAccountCooldown(accountEmail, historyEntries, new Date());
-  }, [accountEmail, historyEntries]);
+    return computeAccountCooldown(
+      accountEmail,
+      historyEntries,
+      new Date(),
+      liveActiveHint,
+      activeManualLock,
+    );
+  }, [accountEmail, historyEntries, liveActiveHint, activeManualLock]);
 
   if (!isOpen || !accountEmail) return null;
+
+  const openLockForm = () => {
+    const existingLock = summary?.manualLock;
+    const defaultFamId =
+      existingLock?.lockedFamilyId ||
+      summary?.lockedFamilyId ||
+      liveActiveHint?.familyId ||
+      families[0]?.id ||
+      '';
+    const matchedFam = defaultFamId ? families.find((f) => f.id === defaultFamId) || null : null;
+    const defaultFamName =
+      existingLock?.lockedFamilyName ||
+      summary?.lockedFamilyName ||
+      liveActiveHint?.familyName ||
+      matchedFam?.name ||
+      matchedFam?.ownerEmail ||
+      '';
+    const defaultOwner =
+      existingLock?.lockedFamilyOwnerEmail ||
+      summary?.lockedFamilyOwnerEmail ||
+      liveActiveHint?.ownerEmail ||
+      matchedFam?.ownerEmail ||
+      '';
+
+    setLockForm({
+      familySelectionMode: matchedFam ? 'existing_family' : 'custom_family',
+      lockedFamilyId: matchedFam ? matchedFam.id : '',
+      lockedFamilyName: defaultFamName,
+      lockedFamilyOwnerEmail: defaultOwner,
+      cooldownEndsAt: existingLock?.cooldownEndsAt ? toDateInputValue(existingLock.cooldownEndsAt) : '',
+      notes: existingLock?.notes || '',
+    });
+    setFormError('');
+    setConfirmDeleteId(null);
+    setFormMode('lock');
+  };
+
+  const handleSubmitLockForm = async (e) => {
+    e.preventDefault();
+    if (submitting || !onUpsertManualLock) return;
+
+    const famName = lockForm.lockedFamilyName.trim();
+    if (!famName || famName.length > 120) {
+      setFormError('Nama Family terakhir wajib diisi (maksimal 120 karakter).');
+      return;
+    }
+
+    setSubmitting(true);
+    setFormError('');
+    try {
+      const res = await onUpsertManualLock({
+        accountEmail,
+        lockedFamilyId:
+          lockForm.familySelectionMode === 'existing_family' ? lockForm.lockedFamilyId || null : null,
+        lockedFamilyName: famName,
+        lockedFamilyOwnerEmail: lockForm.lockedFamilyOwnerEmail.trim() || null,
+        cooldownEndsAt: lockForm.cooldownEndsAt || null,
+        notes: lockForm.notes.trim() || null,
+      });
+      if (res.success) {
+        onFeedback?.(
+          `Akun ${accountEmail} ditandai terkunci cooldown — hanya bisa menetap di ${famName}.`,
+          'warning',
+        );
+        setFormMode(null);
+      } else {
+        setFormError(res.error || 'Gagal menyimpan status terkunci.');
+      }
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleClearManualLock = async () => {
+    if (unlocking || !onClearManualLock) return;
+    setUnlocking(true);
+    try {
+      const res = await onClearManualLock(accountEmail);
+      if (res.success) {
+        onFeedback?.(`Kunci manual untuk ${accountEmail} dibuka.`, 'success');
+      } else {
+        onFeedback?.(res.error || 'Gagal membuka kunci manual.', 'error');
+      }
+    } finally {
+      setUnlocking(false);
+    }
+  };
 
   const openCreateForm = () => {
     setForm(buildEmptyForm(families));
@@ -235,8 +375,10 @@ export default function AccountFamilyHistoryDrawer({
       };
     }
     if (summary.status === 'cooldown_active') {
-      const ends = formatDateId(summary.cooldownEndsAt);
+      const hasDate = Boolean(summary.cooldownEndsAt && summary.cooldownDaysRemaining !== null);
+      const ends = hasDate ? formatDateId(summary.cooldownEndsAt) : null;
       const days = summary.cooldownDaysRemaining ?? 0;
+      const homeFamily = summary.lockedFamilyName || summary.currentFamilyName || 'Family terakhir';
       return {
         tone: summary.isUnlockingSoon
           ? isDark
@@ -245,11 +387,15 @@ export default function AccountFamilyHistoryDrawer({
           : isDark
             ? 'border-red-500/45 bg-red-950/45 text-red-100'
             : 'border-red-700/40 bg-red-50 text-red-950',
-        Icon: summary.isUnlockingSoon ? Clock : ShieldAlert,
-        headline: summary.isUnlockingSoon
-          ? `Hampir Bebas Cooldown · ${days} hari lagi`
-          : `Cooldown Aktif · Terkunci ${days} hari lagi`,
-        detail: `Terkunci pindah ke Family lain sampai ${ends}. Sudah memakai 1x jatah pindah pada ${formatDateId(summary.lastSwitchDate)}.`,
+        Icon: summary.isUnlockingSoon ? Clock : Lock,
+        headline: hasDate
+          ? summary.isUnlockingSoon
+            ? `Hampir Bebas Cooldown · ${days} hari lagi`
+            : `Terkunci Cooldown · ${days} hari lagi`
+          : 'Terkunci Cooldown · Hanya Bisa di Family Terakhir',
+        detail: hasDate
+          ? `Tidak bisa pindah ke Family lain sampai ${ends}. Hanya boleh menetap atau kembali di ${homeFamily}.`
+          : `Akun ini ditandai sudah tidak bisa pindah ke Family lain dan hanya boleh menetap atau kembali di ${homeFamily} (tanggal bebas belum dicatat).`,
       };
     }
     if (summary.status === 'ready_last_switch') {
@@ -343,12 +489,15 @@ export default function AccountFamilyHistoryDrawer({
         {/* Scrollable Body */}
         <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
           {/* Status Summary Banner */}
-          <div className={cn('border p-4 space-y-1.5', statusBanner.tone)}>
+          <div className={cn('border p-4 space-y-2', statusBanner.tone)}>
             <div className="flex items-center gap-2 font-semibold text-sm tabular-nums">
               <BannerIcon className="w-4 h-4 shrink-0" />
               <span>{statusBanner.headline}</span>
             </div>
             <p className="text-xs leading-relaxed opacity-90">{statusBanner.detail}</p>
+            {summary?.manualLock?.notes && (
+              <p className="text-xs italic opacity-85">Catatan: {summary.manualLock.notes}</p>
+            )}
             {historyError && onRetryHistory && (
               <button
                 type="button"
@@ -359,7 +508,312 @@ export default function AccountFamilyHistoryDrawer({
                 Coba Lagi
               </button>
             )}
+
+            {/* Quick Lock / Unlock Controls for Already-Locked Accounts */}
+            {!historyError && onUpsertManualLock && formMode !== 'lock' && (
+              <div className="pt-2 flex flex-wrap items-center gap-2">
+                {summary?.isManualLock ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={openLockForm}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border border-current hover:opacity-85 cursor-pointer"
+                    >
+                      <Pencil className="w-3 h-3" />
+                      Ubah Info Kunci
+                    </button>
+                    {onClearManualLock && (
+                      <button
+                        type="button"
+                        disabled={unlocking}
+                        onClick={handleClearManualLock}
+                        className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold border border-current hover:opacity-85 cursor-pointer disabled:opacity-40"
+                      >
+                        <Unlock className="w-3 h-3" />
+                        {unlocking ? 'Membuka...' : 'Buka Kunci Manual'}
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={openLockForm}
+                    className={cn(
+                      'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold border transition-colors cursor-pointer',
+                      isDark
+                        ? 'border-red-400/50 bg-red-950/40 text-red-200 hover:bg-red-950/70'
+                        : 'border-red-700/40 bg-white text-red-900 hover:bg-red-50',
+                    )}
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    Tandai Sudah Tidak Bisa Pindah (Terkunci)
+                  </button>
+                )}
+              </div>
+            )}
           </div>
+
+          {/* Inline Manual Cooldown Lock Form (Untuk akun lama yang sudah mentok sebelum fitur dibuat) */}
+          {formMode === 'lock' && (
+            <form
+              onSubmit={handleSubmitLockForm}
+              className={cn(
+                'border p-4 space-y-4',
+                isDark ? 'border-red-500/40 bg-stone-950/70' : 'border-red-700/35 bg-white',
+              )}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="font-serif text-base font-bold">
+                  Tandai Akun Tidak Bisa Pindah ke Family Lain
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormMode(null);
+                    setFormError('');
+                  }}
+                  disabled={submitting}
+                  className={cn(
+                    'text-xs underline cursor-pointer',
+                    isDark ? 'text-stone-400 hover:text-stone-200' : 'text-stone-600 hover:text-stone-900',
+                  )}
+                >
+                  Batal
+                </button>
+              </div>
+
+              <p className={cn('text-xs leading-relaxed', isDark ? 'text-stone-400' : 'text-stone-600')}>
+                Gunakan ini untuk akun yang <strong>sudah terkena limit 12 bulan Google</strong> sebelum fitur ini ada. Akun akan dikunci agar hanya menetap atau kembali ke <strong>Family terakhirnya</strong>.
+              </p>
+
+              {formError && (
+                <p
+                  role="alert"
+                  className={cn(
+                    'border px-3 py-2 text-xs font-medium',
+                    isDark
+                      ? 'border-red-500/40 bg-red-950/40 text-red-200'
+                      : 'border-red-700/35 bg-red-50 text-red-800',
+                  )}
+                >
+                  {formError}
+                </p>
+              )}
+
+              <fieldset disabled={submitting} className="space-y-3.5 text-xs">
+                <div className="space-y-1.5">
+                  <span className="block font-semibold">
+                    Family Terakhir (Satu-satunya Family yang Boleh Ditempati) *
+                  </span>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fam = families.find((f) => f.id === lockForm.lockedFamilyId) || families[0];
+                        setLockForm((prev) => ({
+                          ...prev,
+                          familySelectionMode: 'existing_family',
+                          lockedFamilyId: fam?.id || '',
+                          lockedFamilyName: fam ? fam.name || fam.ownerEmail || 'Family Plan' : prev.lockedFamilyName,
+                          lockedFamilyOwnerEmail: fam?.ownerEmail || prev.lockedFamilyOwnerEmail,
+                        }));
+                      }}
+                      disabled={families.length === 0}
+                      className={cn(
+                        'py-2 px-2.5 border font-semibold text-center transition-colors cursor-pointer disabled:opacity-40',
+                        lockForm.familySelectionMode === 'existing_family'
+                          ? isDark
+                            ? 'bg-stone-100 text-stone-950 border-stone-100'
+                            : 'bg-stone-900 text-stone-50 border-stone-900'
+                          : isDark
+                            ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                            : 'border-stone-300 text-stone-700 hover:bg-stone-100',
+                      )}
+                    >
+                      Pilih dari Family
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLockForm((prev) => ({
+                          ...prev,
+                          familySelectionMode: 'custom_family',
+                          lockedFamilyId: '',
+                        }))
+                      }
+                      className={cn(
+                        'py-2 px-2.5 border font-semibold text-center transition-colors cursor-pointer',
+                        lockForm.familySelectionMode === 'custom_family'
+                          ? isDark
+                            ? 'bg-stone-100 text-stone-950 border-stone-100'
+                            : 'bg-stone-900 text-stone-50 border-stone-900'
+                          : isDark
+                            ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                            : 'border-stone-300 text-stone-700 hover:bg-stone-100',
+                      )}
+                    >
+                      Ketik Nama Family
+                    </button>
+                  </div>
+                </div>
+
+                {lockForm.familySelectionMode === 'existing_family' ? (
+                  <select
+                    aria-label="Pilih Family terakhir tempat akun terkunci"
+                    value={lockForm.lockedFamilyId}
+                    onChange={(e) => {
+                      const fam = families.find((f) => f.id === e.target.value);
+                      setLockForm((prev) => ({
+                        ...prev,
+                        lockedFamilyId: e.target.value,
+                        lockedFamilyName: fam ? fam.name || fam.ownerEmail || 'Family Plan' : '',
+                        lockedFamilyOwnerEmail: fam?.ownerEmail || '',
+                      }));
+                    }}
+                    className={cn(
+                      'w-full px-3 py-2 border text-xs',
+                      isDark
+                        ? 'bg-stone-900 border-stone-700 text-stone-100'
+                        : 'bg-paper border-stone-300 text-stone-900',
+                    )}
+                  >
+                    <option value="">— Pilih Family Terakhir —</option>
+                    {families.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name || f.ownerEmail || 'Family Plan'}
+                        {f.ownerEmail ? ` (${f.ownerEmail})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="space-y-2.5">
+                    <input
+                      type="text"
+                      maxLength={120}
+                      required
+                      value={lockForm.lockedFamilyName}
+                      onChange={(e) =>
+                        setLockForm((prev) => ({ ...prev, lockedFamilyName: e.target.value }))
+                      }
+                      placeholder="Nama Family terakhir tempat akun ini menetap"
+                      className={cn(
+                        'w-full px-3 py-2 border text-xs',
+                        isDark
+                          ? 'bg-stone-900 border-stone-700 text-stone-100 placeholder:text-stone-500'
+                          : 'bg-paper border-stone-300 text-stone-900 placeholder:text-stone-400',
+                      )}
+                    />
+                    <input
+                      type="email"
+                      maxLength={254}
+                      value={lockForm.lockedFamilyOwnerEmail}
+                      onChange={(e) =>
+                        setLockForm((prev) => ({ ...prev, lockedFamilyOwnerEmail: e.target.value }))
+                      }
+                      placeholder="Email owner Family terakhir (opsional)"
+                      className={cn(
+                        'w-full px-3 py-2 border text-xs font-mono',
+                        isDark
+                          ? 'bg-stone-900 border-stone-700 text-stone-100 placeholder:text-stone-500'
+                          : 'bg-paper border-stone-300 text-stone-900 placeholder:text-stone-400',
+                      )}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label htmlFor="lock-ends-at" className="block font-semibold">
+                    Perkiraan Tanggal Bebas Cooldown (opsional — kosongkan jika lupa)
+                  </label>
+                  <input
+                    id="lock-ends-at"
+                    type="date"
+                    value={lockForm.cooldownEndsAt}
+                    onChange={(e) =>
+                      setLockForm((prev) => ({ ...prev, cooldownEndsAt: e.target.value }))
+                    }
+                    className={cn(
+                      'w-full px-2.5 py-2 border text-xs tabular-nums',
+                      isDark
+                        ? 'bg-stone-900 border-stone-700 text-stone-100'
+                        : 'bg-paper border-stone-300 text-stone-900',
+                    )}
+                  />
+                  <div className="flex flex-wrap gap-1.5 pt-0.5">
+                    {LOCK_DATE_PRESETS.map((preset) => (
+                      <button
+                        key={preset.label}
+                        type="button"
+                        onClick={() =>
+                          setLockForm((prev) => ({
+                            ...prev,
+                            cooldownEndsAt:
+                              preset.months === null
+                                ? ''
+                                : addCalendarMonths(new Date(), preset.months) || '',
+                          }))
+                        }
+                        className={cn(
+                          'px-2 py-1 text-[11px] font-semibold border transition-colors cursor-pointer',
+                          isDark
+                            ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                            : 'border-stone-300 text-stone-700 hover:bg-stone-100',
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-1">
+                  <label htmlFor="lock-notes" className="block font-semibold">
+                    Catatan (opsional)
+                  </label>
+                  <textarea
+                    id="lock-notes"
+                    rows={2}
+                    maxLength={300}
+                    value={lockForm.notes}
+                    onChange={(e) => setLockForm((prev) => ({ ...prev, notes: e.target.value }))}
+                    placeholder="Contoh: Ditolak Google saat pindah sebelumnya, harus tetap di Family ini"
+                    className={cn(
+                      'w-full px-3 py-2 border text-xs resize-none',
+                      isDark
+                        ? 'bg-stone-900 border-stone-700 text-stone-100 placeholder:text-stone-500'
+                        : 'bg-paper border-stone-300 text-stone-900 placeholder:text-stone-400',
+                    )}
+                  />
+                </div>
+
+                <div className="flex items-center justify-end gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormMode(null);
+                      setFormError('');
+                    }}
+                    className={cn(
+                      'px-3.5 py-2 border font-semibold cursor-pointer',
+                      isDark
+                        ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
+                        : 'border-stone-300 text-stone-700 hover:bg-stone-100',
+                    )}
+                  >
+                    Batal
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-semibold transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    <Lock className="w-3.5 h-3.5" />
+                    {submitting ? 'Menyimpan...' : 'Simpan Status Terkunci'}
+                  </button>
+                </div>
+              </fieldset>
+            </form>
+          )}
 
           {/* Primary Action Bar */}
           {!formMode && !historyError && (
@@ -384,7 +838,7 @@ export default function AccountFamilyHistoryDrawer({
           )}
 
           {/* Inline Create / Edit Form (US-04, US-05) */}
-          {formMode && (
+          {(formMode === 'create' || formMode === 'edit') && (
             <form
               onSubmit={handleSubmitForm}
               className={cn(

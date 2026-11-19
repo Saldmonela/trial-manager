@@ -1,11 +1,12 @@
 import React from 'react';
-import { ShieldAlert, ShieldCheck, Clock, RefreshCw, History } from 'lucide-react';
+import { ShieldAlert, ShieldCheck, Clock, RefreshCw, History, Lock } from 'lucide-react';
 import { cn } from '../../utils';
 import { formatDateId } from '../../lib/cooldownLogic';
 
 /**
  * Badge tunggal status cooldown 12 bulan Google Family untuk Cockpit & Dashboard Admin.
- * Memenuhi AC-02-01, AC-02-03 (Fail-Safe error state), dan AC-09-01 (H-14 hampir bebas).
+ * Memenuhi AC-02-01, AC-02-03 (Fail-Safe error state), AC-09-01 (H-14 hampir bebas),
+ * serta status Terkunci Manual (hanya bisa menetap di Family terakhir).
  */
 export default function CooldownStatusBadge({
   summary,
@@ -66,8 +67,15 @@ export default function CooldownStatusBadge({
     );
   }
 
-  const { status, cooldownDaysRemaining, cooldownEndsAt, isUnlockingSoon, firstFamilyName, firstJoinedAt } =
-    summary;
+  const {
+    status,
+    cooldownDaysRemaining,
+    cooldownEndsAt,
+    isUnlockingSoon,
+    firstFamilyName,
+    firstJoinedAt,
+    lockedFamilyName,
+  } = summary;
 
   let label = 'Belum Gabung';
   let subline = null;
@@ -75,7 +83,7 @@ export default function CooldownStatusBadge({
   let toneClass = isDark
     ? 'border-stone-700 bg-stone-800/70 text-stone-300 hover:border-stone-500'
     : 'border-stone-300 bg-stone-100 text-stone-700 hover:border-stone-500';
-  let titleText = 'Belum ada riwayat bergabung ke Family. Klik untuk lihat atau catat riwayat lama.';
+  let titleText = 'Belum ada riwayat bergabung ke Family. Klik untuk lihat, catat riwayat lama, atau tandai terkunci.';
 
   if (status === 'safe_first_family') {
     label = compact ? 'Aman · 1x' : 'Aman · Sisa 1x Pindah';
@@ -83,9 +91,10 @@ export default function CooldownStatusBadge({
     toneClass = isDark
       ? 'border-emerald-500/35 bg-emerald-500/12 text-emerald-300 hover:border-emerald-400'
       : 'border-emerald-700/30 bg-emerald-50 text-emerald-800 hover:border-emerald-700';
-    titleText = firstFamilyName && firstJoinedAt
-      ? `Bergabung pertama di ${firstFamilyName} (${formatDateId(firstJoinedAt)}). Masih tersisa 1x jatah pindah dalam 12 bulan.`
-      : 'Masih tersisa 1x jatah pindah Google Family dalam 12 bulan.';
+    titleText =
+      firstFamilyName && firstJoinedAt
+        ? `Bergabung pertama di ${firstFamilyName} (${formatDateId(firstJoinedAt)}). Masih tersisa 1x jatah pindah dalam 12 bulan. Klik untuk kelola atau tandai jika akun sudah terkunci.`
+        : 'Masih tersisa 1x jatah pindah Google Family dalam 12 bulan. Klik untuk kelola atau tandai jika akun sudah terkunci.';
   } else if (status === 'ready_last_switch') {
     label = compact ? 'Siap Family #2' : 'Siap Masuk Family ke-2';
     subline = compact ? null : 'Jatah pindah terakhir';
@@ -95,17 +104,34 @@ export default function CooldownStatusBadge({
       : 'border-amber-700/35 bg-amber-50 text-amber-900 hover:border-amber-700';
     titleText = 'Sudah keluar dari Family ke-1. Masuk ke Family baru akan memakai jatah pindah 12 bulan terakhir.';
   } else if (status === 'cooldown_active') {
+    const hasDate = Boolean(cooldownEndsAt && cooldownDaysRemaining !== null);
     const days = cooldownDaysRemaining ?? 0;
-    const endsLabel = formatDateId(cooldownEndsAt);
-    label = isUnlockingSoon
-      ? compact
-        ? `Bebas ${days}h`
-        : `Bebas ${days}h lagi`
-      : compact
-        ? `Cooldown · ${days}h`
-        : `Cooldown · ${days}h lagi`;
-    subline = compact ? null : `Terkunci s.d. ${endsLabel}`;
-    Icon = isUnlockingSoon ? Clock : ShieldAlert;
+    const endsLabel = hasDate ? formatDateId(cooldownEndsAt) : null;
+
+    if (hasDate) {
+      label = isUnlockingSoon
+        ? compact
+          ? `Bebas ${days}h`
+          : `Bebas ${days}h lagi`
+        : compact
+          ? `Terkunci · ${days}h`
+          : `Cooldown · ${days}h lagi`;
+      subline = compact
+        ? null
+        : lockedFamilyName
+          ? `Hanya di ${lockedFamilyName} · s.d. ${endsLabel}`
+          : `Terkunci s.d. ${endsLabel}`;
+      Icon = isUnlockingSoon ? Clock : Lock;
+    } else {
+      label = compact ? 'Terkunci · 0x' : 'Terkunci · Tetap di Family Ini';
+      subline = compact
+        ? null
+        : lockedFamilyName
+          ? `Hanya bisa di ${lockedFamilyName}`
+          : 'Hanya bisa di Family terakhir';
+      Icon = Lock;
+    }
+
     toneClass = isUnlockingSoon
       ? isDark
         ? 'border-amber-500/45 bg-amber-500/15 text-amber-200 hover:border-amber-400'
@@ -113,7 +139,10 @@ export default function CooldownStatusBadge({
       : isDark
         ? 'border-red-500/45 bg-red-950/50 text-red-200 hover:border-red-400'
         : 'border-red-700/40 bg-red-50 text-red-900 hover:border-red-700';
-    titleText = `Akun sedang cooldown 12 bulan Google Family. Terkunci pindah sampai ${endsLabel} (${days} hari lagi).`;
+
+    titleText = hasDate
+      ? `Tidak bisa pindah ke Family lain sampai ${endsLabel} (${days} hari lagi). Hanya bisa menetap / kembali di ${lockedFamilyName || 'Family terakhir'}.`
+      : `Ditandai sudah tidak bisa pindah ke Family lain. Hanya bisa menetap / kembali di ${lockedFamilyName || 'Family terakhir'} sampai dibuka manual.`;
   }
 
   const content = (
@@ -131,7 +160,7 @@ export default function CooldownStatusBadge({
       {subline && (
         <span
           className={cn(
-            'text-[11px] tabular-nums',
+            'text-[11px] tabular-nums max-w-[220px] truncate',
             status === 'cooldown_active' && !isUnlockingSoon
               ? isDark
                 ? 'text-red-300/90'

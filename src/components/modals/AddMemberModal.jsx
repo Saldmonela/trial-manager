@@ -7,6 +7,7 @@ import {
   evaluateCooldownActionWarning,
   isPersonalAccountEmail,
 } from '../../lib/cooldownLogic';
+import { normalizeEmail } from '../../lib/cockpitParser';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
 import { useAsyncForm } from '../../hooks/useAsyncForm';
@@ -30,6 +31,7 @@ export default function AddMemberModal({
   families = [],
   cockpitAccounts = [],
   historyEntries = [],
+  cooldownLocks = [],
   historyError = null,
   onRetryHistory,
 }) {
@@ -71,8 +73,10 @@ export default function AddMemberModal({
 
   const cooldownSummary = useMemo(() => {
     if (!isPersonalTarget || !formData.email.trim()) return null;
-    return computeAccountCooldown(formData.email, historyEntries, new Date());
-  }, [isPersonalTarget, formData.email, historyEntries]);
+    const norm = normalizeEmail(formData.email);
+    const manualLock = (cooldownLocks || []).find((l) => normalizeEmail(l.accountEmail) === norm) || null;
+    return computeAccountCooldown(formData.email, historyEntries, new Date(), null, manualLock);
+  }, [isPersonalTarget, formData.email, historyEntries, cooldownLocks]);
 
   const warningEvaluation = useMemo(() => {
     if (!isPersonalTarget || !formData.email.trim()) return null;

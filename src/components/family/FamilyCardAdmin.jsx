@@ -21,6 +21,7 @@ export default function FamilyCardAdmin({
   onDisconnectDrive,
   cockpitAccounts = [],
   historyEntries = [],
+  cooldownLocks = [],
   cooldownByEmail = null,
   historyLoading = false,
   historyError = null,
@@ -50,6 +51,7 @@ export default function FamilyCardAdmin({
       onDisconnectDrive={onDisconnectDrive}
       cockpitAccounts={cockpitAccounts}
       historyEntries={historyEntries}
+      cooldownLocks={cooldownLocks}
       cooldownByEmail={cooldownByEmail}
       historyLoading={historyLoading}
       historyError={historyError}

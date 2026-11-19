@@ -1,6 +1,7 @@
 import { normalizeEmail } from './cockpitParser';
 import { isFamilyDowngraded } from './familyUtils';
 import type {
+  AccountCooldownLock,
   AccountCooldownSummary,
   AccountFamilyHistoryEntry,
   AnnotatedHistoryEntry,
@@ -162,12 +163,15 @@ export interface LiveActiveFamilyHint {
 
 /**
  * Mesin utama perhitungan status cooldown 12 bulan Google Family untuk 1 akun pribadi (BR-02, OQ-01, OQ-02).
+ * Mendukung penandaan manual `manualLock` bagi akun lama yang sudah tidak bisa pindah sebelum fitur ini dibuat:
+ * akun yang terkunci hanya bisa menetap / kembali di Family terakhirnya sampai tanggal bebas atau dibuka manual.
  */
 export function computeAccountCooldown(
   rawEmail: string,
   allHistoryEntries: AccountFamilyHistoryEntry[],
   nowInput: Date | string = new Date(),
   liveActiveHint?: LiveActiveFamilyHint | null,
+  manualLock?: AccountCooldownLock | null,
 ): AccountCooldownSummary {
   const email = normalizeEmail(rawEmail);
   const nowParts = parseLocalDateParts(nowInput) ?? parseLocalDateParts(new Date())!;
@@ -186,11 +190,14 @@ export function computeAccountCooldown(
     daysRemaining: number;
     fromFamily: string;
     toFamily: string;
+    toFamilyId: string | null;
+    toFamilyOwnerEmail: string | null;
   } | null = null;
 
   let firstFamilyName: string | null = null;
   let firstJoinedAt: string | null = null;
   let activeEntry: AccountFamilyHistoryEntry | null = null;
+  let lastCountableEntry: AccountFamilyHistoryEntry | null = null;
   let hasLeftWithin12m = false;
 
   const annotated: AnnotatedHistoryEntry[] = accountEntries.map((entry) => {
@@ -203,6 +210,7 @@ export function computeAccountCooldown(
     }
 
     seq += 1;
+    lastCountableEntry = entry;
     if (seq === 1) {
       firstFamilyName = entry.familyNameSnapshot;
       firstJoinedAt = entry.joinedAt;
@@ -229,7 +237,6 @@ export function computeAccountCooldown(
 
       if (prevWindowEnd && entryJoinIso) {
         const daysBeforeReset = diffCalendarDays(entryJoinIso, prevWindowEnd);
-        // Jika bergabung ke Family berbeda sebelum 12 bulan sejak keluar/gabung Family sebelumnya
         if (daysBeforeReset !== null && daysBeforeReset > 0) {
           isSwitchEvent = true;
           const switchEndsAt = addCalendarMonths(entry.joinedAt, GOOGLE_FAMILY_COOLDOWN_MONTHS);
@@ -243,6 +250,8 @@ export function computeAccountCooldown(
                 daysRemaining: remaining,
                 fromFamily: previousCountable.familyNameSnapshot,
                 toFamily: entry.familyNameSnapshot,
+                toFamilyId: entry.familyId ?? null,
+                toFamilyOwnerEmail: entry.familyOwnerEmailSnapshot ?? null,
               };
             }
           }
@@ -261,15 +270,64 @@ export function computeAccountCooldown(
   // Fallback halus bila akun sudah ada di daftar member aktif tapi belum ter-seed di tabel riwayat
   const effectiveCurrentFamilyId = activeEntry?.familyId ?? liveActiveHint?.familyId ?? null;
   const effectiveCurrentFamilyName = activeEntry?.familyNameSnapshot ?? liveActiveHint?.familyName ?? null;
+  const effectiveCurrentOwnerEmail =
+    activeEntry?.familyOwnerEmailSnapshot ?? liveActiveHint?.ownerEmail ?? null;
   const effectiveCurrentJoinedAt = activeEntry?.joinedAt ?? liveActiveHint?.joinedAt ?? null;
   if (!firstFamilyName && liveActiveHint) {
     firstFamilyName = liveActiveHint.familyName;
     firstJoinedAt = liveActiveHint.joinedAt ?? null;
   }
 
+  // Evaluasi manual cooldown lock (akun yang sudah terkunci sebelum fitur ini dibuat)
+  let isManualLockActive = false;
+  let manualEndsIso: string | null = null;
+  let manualDaysRemaining: number | null = null;
+  if (manualLock && manualLock.isLocked) {
+    if (!manualLock.cooldownEndsAt) {
+      // Terkunci manual tanpa tanggal bebas (sampai dibuka manual oleh Owner)
+      isManualLockActive = true;
+    } else {
+      const endParts = parseLocalDateParts(manualLock.cooldownEndsAt);
+      if (endParts) {
+        const endIso = formatPartsToIsoDate(endParts);
+        const rem = diffCalendarDays(todayIso, endIso);
+        if (rem !== null && rem > 0) {
+          isManualLockActive = true;
+          manualEndsIso = endIso;
+          manualDaysRemaining = rem;
+        }
+      } else {
+        isManualLockActive = true;
+      }
+    }
+  }
+
   let status: CooldownStatus;
+  let cooldownEndsAt: string | null = null;
+  let cooldownDaysRemaining: number | null = null;
+  let isManualLock = false;
+
   if (activeSwitchCount >= 1 && latestActiveSwitch) {
     status = 'cooldown_active';
+    cooldownEndsAt = latestActiveSwitch.endsAt;
+    cooldownDaysRemaining = latestActiveSwitch.daysRemaining;
+    // Jika manual lock juga aktif dan tanggalnya lebih jauh (atau tanpa tanggal), pertahankan info manual lock
+    if (isManualLockActive) {
+      isManualLock = true;
+      if (
+        manualEndsIso &&
+        manualDaysRemaining !== null &&
+        manualDaysRemaining > latestActiveSwitch.daysRemaining
+      ) {
+        cooldownEndsAt = manualEndsIso;
+        cooldownDaysRemaining = manualDaysRemaining;
+      }
+    }
+  } else if (isManualLockActive) {
+    status = 'cooldown_active';
+    isManualLock = true;
+    cooldownEndsAt = manualEndsIso;
+    cooldownDaysRemaining = manualDaysRemaining;
   } else if (effectiveCurrentFamilyName) {
     status = 'safe_first_family';
   } else if (hasLeftWithin12m) {
@@ -278,8 +336,32 @@ export function computeAccountCooldown(
     status = 'never_joined';
   }
 
-  const cooldownEndsAt = latestActiveSwitch ? latestActiveSwitch.endsAt : null;
-  const cooldownDaysRemaining = latestActiveSwitch ? latestActiveSwitch.daysRemaining : null;
+  // Tentukan "Family Terakhir" (satu-satunya Family tempat akun boleh menetap / kembali saat terkunci)
+  const lockedFamilyId =
+    status === 'cooldown_active'
+      ? manualLock?.lockedFamilyId ??
+        latestActiveSwitch?.toFamilyId ??
+        effectiveCurrentFamilyId ??
+        lastCountableEntry?.familyId ??
+        null
+      : null;
+  const lockedFamilyName =
+    status === 'cooldown_active'
+      ? manualLock?.lockedFamilyName ??
+        latestActiveSwitch?.toFamily ??
+        effectiveCurrentFamilyName ??
+        lastCountableEntry?.familyNameSnapshot ??
+        null
+      : null;
+  const lockedFamilyOwnerEmail =
+    status === 'cooldown_active'
+      ? manualLock?.lockedFamilyOwnerEmail ??
+        latestActiveSwitch?.toFamilyOwnerEmail ??
+        effectiveCurrentOwnerEmail ??
+        lastCountableEntry?.familyOwnerEmailSnapshot ??
+        null
+      : null;
+
   const isUnlockingSoon = Boolean(
     status === 'cooldown_active' &&
       cooldownDaysRemaining !== null &&
@@ -290,6 +372,11 @@ export function computeAccountCooldown(
   return {
     email,
     status,
+    isManualLock,
+    manualLock: isManualLockActive ? manualLock ?? null : null,
+    lockedFamilyId,
+    lockedFamilyName,
+    lockedFamilyOwnerEmail,
     switchesInLast12m: activeSwitchCount,
     cooldownEndsAt,
     cooldownDaysRemaining,
@@ -347,36 +434,62 @@ export function evaluateCooldownActionWarning(params: {
         ? `Tergabung di ${summary.currentFamilyName} sejak ${formatDateId(summary.currentJoinedAt)}.`
         : null;
 
-  // Cek OQ-02: apakah aksi join/move menuju Family yang sama persis dengan entri terakhir
+  // Cek apakah aksi join/move menuju Family terakhirnya sendiri (OQ-02 + aturan Google: akun terkunci tetap boleh kembali ke Family terakhirnya)
   const lastCountable = [...summary.entries]
     .reverse()
     .find((e) => e.countsForCooldown);
+  const lockedIdentity = summary.lockedFamilyName || summary.lockedFamilyId || summary.lockedFamilyOwnerEmail
+    ? {
+        familyId: summary.lockedFamilyId,
+        familyOwnerEmailSnapshot: summary.lockedFamilyOwnerEmail,
+        familyNameSnapshot: summary.lockedFamilyName,
+      }
+    : lastCountable;
+
   const isSameFamilyRejoin = Boolean(
     (action === 'join' || action === 'move') &&
       targetFamily &&
-      lastCountable &&
-      isSameFamilyIdentity(lastCountable, {
+      lockedIdentity &&
+      isSameFamilyIdentity(lockedIdentity, {
         familyId: targetFamily.id ?? null,
         familyOwnerEmailSnapshot: targetFamily.ownerEmail ?? null,
         familyNameSnapshot: targetFamily.name ?? null,
       }),
   );
 
-  // Level 2 — Kritis (Cooldown Aktif)
+  // Level 2 — Kritis (Cooldown Aktif, kecuali kembali ke Family terakhirnya sendiri)
   if (summary.status === 'cooldown_active' && !isSameFamilyRejoin) {
-    const endsLabel = formatDateId(summary.cooldownEndsAt);
-    const days = summary.cooldownDaysRemaining ?? 0;
-    const switchDateLabel = summary.lastSwitchDate ? formatDateId(summary.lastSwitchDate) : 'sebelumnya';
-    const switchRoute =
-      summary.lastSwitchFromFamily && summary.lastSwitchToFamily
-        ? ` (pindah dari ${summary.lastSwitchFromFamily} ke ${summary.lastSwitchToFamily})`
-        : '';
+    const endsLabel = summary.cooldownEndsAt ? formatDateId(summary.cooldownEndsAt) : null;
+    const days = summary.cooldownDaysRemaining;
+    const lockedName = summary.lockedFamilyName || activeFamLabel;
+
+    let message: string;
+    if (summary.isManualLock && !summary.lastSwitchDate) {
+      const datePhrase =
+        endsLabel && days !== null
+          ? `sampai ${endsLabel} (${days} hari lagi)`
+          : 'sampai masa cooldown 12 bulan selesai (tanggal bebas belum dicatat)';
+      message = `Akun ${email} ditandai sudah tidak bisa pindah ke Family lain dan hanya bisa menetap atau kembali di ${lockedName}. Jika dipindahkan ke Family lain sekarang, Google akan menolak ${datePhrase}.`;
+    } else {
+      const switchDateLabel = summary.lastSwitchDate ? formatDateId(summary.lastSwitchDate) : 'sebelumnya';
+      const switchRoute =
+        summary.lastSwitchFromFamily && summary.lastSwitchToFamily
+          ? ` (pindah dari ${summary.lastSwitchFromFamily} ke ${summary.lastSwitchToFamily})`
+          : '';
+      const datePhrase =
+        endsLabel && days !== null
+          ? `sampai ${endsLabel} (${days} hari lagi)`
+          : 'sampai masa cooldown 12 bulan berakhir';
+      message = `Akun ${email} sudah memakai jatah pindah Google Family pada ${switchDateLabel}${switchRoute} dan hanya bisa menetap di ${lockedName}. Jika dikeluarkan/dipindah ke Family lain sekarang, Google akan menolak ${datePhrase} dan akun akan terjebak di paket FREE.`;
+    }
 
     return {
       level: 'critical_cooldown_locked',
-      title: 'STOP — Akun Sedang Cooldown 12 Bulan',
-      summaryLine,
-      message: `Akun ${email} sudah memakai jatah pindah Google Family pada ${switchDateLabel}${switchRoute}. Jika dikeluarkan/dipindah sekarang, Google akan menolak masuk ke Family ke-3 sampai ${endsLabel} (${days} hari lagi) dan akun akan terjebak di paket FREE.`,
+      title: 'STOP — Akun Hanya Bisa Menetap di Family Terakhir',
+      summaryLine: summary.lockedFamilyName
+        ? `Terkunci di Family terakhir: ${summary.lockedFamilyName}${endsLabel ? ` (bebas ${endsLabel})` : ''}.`
+        : summaryLine,
+      message,
       isSameFamilyRejoin: false,
       requiresExplicitOverride: true,
       cooldownEndsLabel: endsLabel,
@@ -384,13 +497,20 @@ export function evaluateCooldownActionWarning(params: {
     };
   }
 
-  // OQ-02: Re-join ke Family yang sama tidak dihitung Switch
+  // OQ-02 / Aturan Google: Masuk kembali ke Family terakhirnya sendiri DIIZINKAN walau sedang cooldown
   if (isSameFamilyRejoin) {
+    const famLabel = targetFamily?.name || summary.lockedFamilyName || 'Family terakhir';
     return {
       level: 'none',
-      title: 'Masuk Kembali ke Family yang Sama',
+      title:
+        summary.status === 'cooldown_active'
+          ? 'Diizinkan Kembali ke Family Terakhir'
+          : 'Masuk Kembali ke Family yang Sama',
       summaryLine,
-      message: `Akun ini tercatat pernah bergabung di ${targetFamily?.name || 'Family yang sama'}. Masuk kembali ke Family yang sama tidak dihitung sebagai perpindahan (Switch).`,
+      message:
+        summary.status === 'cooldown_active'
+          ? `Akun ini sedang terkunci dari Family lain, tetapi tetap diizinkan menetap / masuk kembali ke Family terakhirnya (${famLabel}).`
+          : `Akun ini tercatat pernah bergabung di ${famLabel}. Masuk kembali ke Family yang sama tidak dihitung sebagai perpindahan (Switch).`,
       isSameFamilyRejoin: true,
       requiresExplicitOverride: false,
       cooldownEndsLabel: null,
@@ -470,6 +590,7 @@ export function computeFamilyDowngradeImpact(params: {
   family: Family;
   cockpitAccounts?: CockpitAccount[];
   historyEntries?: AccountFamilyHistoryEntry[];
+  cooldownLocks?: AccountCooldownLock[];
   historyLoadError?: string | null;
   now?: Date | string;
 }): FamilyDowngradeImpact {
@@ -477,9 +598,15 @@ export function computeFamilyDowngradeImpact(params: {
     family,
     cockpitAccounts = [],
     historyEntries = [],
+    cooldownLocks = [],
     historyLoadError = null,
     now = new Date(),
   } = params;
+
+  const lockByEmail = new Map<string, AccountCooldownLock>();
+  for (const l of cooldownLocks) {
+    lockByEmail.set(normalizeEmail(l.accountEmail), l);
+  }
 
   const cockpitByEmail = new Map<string, CockpitAccount>();
   for (const acc of cockpitAccounts) {
@@ -517,12 +644,18 @@ export function computeFamilyDowngradeImpact(params: {
   const unverified: DowngradeAffectedAccount[] = [];
 
   for (const item of personalMembers) {
-    const cooldown = computeAccountCooldown(item.email, historyEntries, now, {
-      familyId: family.id,
-      familyName: family.name || family.ownerEmail || 'Family Plan',
-      ownerEmail: family.ownerEmail ?? null,
-      joinedAt: item.addedAt,
-    });
+    const cooldown = computeAccountCooldown(
+      item.email,
+      historyEntries,
+      now,
+      {
+        familyId: family.id,
+        familyName: family.name || family.ownerEmail || 'Family Plan',
+        ownerEmail: family.ownerEmail ?? null,
+        joinedAt: item.addedAt,
+      },
+      lockByEmail.get(item.email) ?? null,
+    );
 
     const record: DowngradeAffectedAccount = {
       email: item.email,
@@ -559,8 +692,18 @@ export function buildCooldownSummaryMap(
   families: Family[] = [],
   cockpitAccounts: CockpitAccount[] = [],
   now: Date | string = new Date(),
+  cooldownLocks: AccountCooldownLock[] = [],
 ): Map<string, AccountCooldownSummary> {
   const emailHints = new Map<string, LiveActiveFamilyHint | null>();
+  const lockByEmail = new Map<string, AccountCooldownLock>();
+
+  for (const lock of cooldownLocks) {
+    const email = normalizeEmail(lock.accountEmail);
+    if (email) {
+      lockByEmail.set(email, lock);
+      if (!emailHints.has(email)) emailHints.set(email, null);
+    }
+  }
 
   for (const acc of cockpitAccounts) {
     const email = normalizeEmail(acc.email);
@@ -590,7 +733,10 @@ export function buildCooldownSummaryMap(
 
   const map = new Map<string, AccountCooldownSummary>();
   for (const [email, hint] of emailHints.entries()) {
-    map.set(email, computeAccountCooldown(email, historyEntries, now, hint));
+    map.set(
+      email,
+      computeAccountCooldown(email, historyEntries, now, hint, lockByEmail.get(email) ?? null),
+    );
   }
   return map;
 }

@@ -3,15 +3,38 @@ import { supabase } from '../supabaseClient';
 import { normalizeEmail } from '../lib/cockpitParser';
 import { diffCalendarDays, parseLocalDateParts } from '../lib/cooldownLogic';
 import type {
+  AccountCooldownLock,
   AccountFamilyHistoryEntry,
   ActionResult,
+  ManualCooldownLockInput,
   ManualHistoryInput,
 } from '../types';
 
 const SELECT_COLUMNS =
   'id,user_id,account_email,family_id,family_name_snapshot,family_owner_email_snapshot,member_id,joined_at,left_at,source,leave_reason,counts_for_cooldown,override_reason_type,override_note,notes,created_at,updated_at';
 
+const LOCK_SELECT_COLUMNS =
+  'id,user_id,account_email,is_locked,locked_family_id,locked_family_name,locked_family_owner_email,cooldown_ends_at,notes,created_at,updated_at';
+
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function mapLockRow(r: Record<string, any>): AccountCooldownLock {
+  return {
+    id: r.id,
+    userId: r.user_id,
+    accountEmail: normalizeEmail(r.account_email),
+    isLocked: r.is_locked !== false,
+    lockedFamilyId: r.locked_family_id ?? null,
+    lockedFamilyName: r.locked_family_name ?? null,
+    lockedFamilyOwnerEmail: r.locked_family_owner_email
+      ? normalizeEmail(r.locked_family_owner_email)
+      : null,
+    cooldownEndsAt: r.cooldown_ends_at ?? null,
+    notes: r.notes ?? null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
 
 function mapHistoryRow(r: Record<string, any>): AccountFamilyHistoryEntry {
   return {
@@ -119,6 +142,7 @@ function mapWriteError(err: { code?: string; message?: string } | null): string 
 
 export function useAccountFamilyHistory(enabled = true) {
   const [entries, setEntries] = useState<AccountFamilyHistoryEntry[]>([]);
+  const [locks, setLocks] = useState<AccountCooldownLock[]>([]);
   const [loading, setLoading] = useState(Boolean(enabled));
   const [error, setError] = useState<string | null>(null);
   const [migrationMissing, setMigrationMissing] = useState(false);
@@ -135,13 +159,20 @@ export function useAccountFamilyHistory(enabled = true) {
         if (seq === seqRef.current) setLoading(false);
         return;
       }
-      const { data, error: fetchError } = await supabase
-        .from('account_family_history')
-        .select(SELECT_COLUMNS)
-        .order('joined_at', { ascending: true });
+      const [historyRes, locksRes] = await Promise.all([
+        supabase
+          .from('account_family_history')
+          .select(SELECT_COLUMNS)
+          .order('joined_at', { ascending: true }),
+        supabase
+          .from('account_cooldown_locks')
+          .select(LOCK_SELECT_COLUMNS)
+          .eq('is_locked', true),
+      ]);
 
       if (seq !== seqRef.current) return;
 
+      const fetchError = historyRes.error;
       if (fetchError) {
         const msg = fetchError.message || '';
         if (
@@ -159,7 +190,14 @@ export function useAccountFamilyHistory(enabled = true) {
       }
 
       setMigrationMissing(false);
-      setEntries((data || []).map(mapHistoryRow));
+      setEntries((historyRes.data || []).map(mapHistoryRow));
+
+      // Jika tabel account_cooldown_locks belum dimigrasi, biarkan locks kosong tanpa memblokir timeline
+      if (!locksRes.error && Array.isArray(locksRes.data)) {
+        setLocks(locksRes.data.map(mapLockRow));
+      } else {
+        setLocks([]);
+      }
       setError(null);
     } catch {
       if (seq === seqRef.current) {
@@ -328,8 +366,105 @@ export function useAccountFamilyHistory(enabled = true) {
     [refetch],
   );
 
+  const upsertManualLock = useCallback(
+    async (input: ManualCooldownLockInput): Promise<ActionResult<AccountCooldownLock>> => {
+      if (!supabase) return { success: false, error: 'Supabase belum dikonfigurasi.' };
+
+      const email = normalizeEmail(input.accountEmail);
+      if (!email || !EMAIL_REGEX.test(email)) {
+        return { success: false, code: 'INVALID_INPUT', error: 'Format email akun pribadi tidak valid.' };
+      }
+
+      const famName = (input.lockedFamilyName || '').trim();
+      if (!famName || famName.length > 120) {
+        return {
+          success: false,
+          code: 'INVALID_INPUT',
+          error: 'Nama Family terakhir wajib diisi (maksimal 120 karakter).',
+        };
+      }
+
+      const ownerClean = input.lockedFamilyOwnerEmail
+        ? normalizeEmail(input.lockedFamilyOwnerEmail)
+        : null;
+      if (ownerClean && (ownerClean.length > 254 || !EMAIL_REGEX.test(ownerClean))) {
+        return {
+          success: false,
+          code: 'INVALID_INPUT',
+          error: 'Format email owner Family terakhir tidak valid.',
+        };
+      }
+
+      if (input.notes && input.notes.length > 300) {
+        return { success: false, code: 'INVALID_INPUT', error: 'Catatan maksimal 300 karakter.' };
+      }
+
+      const {
+        data: { user },
+        error: authErr,
+      } = await supabase.auth.getUser();
+      if (authErr || !user) {
+        return {
+          success: false,
+          code: 'UNAUTHORIZED',
+          error: 'Sesi login kamu sudah berakhir. Silakan masuk ulang untuk melanjutkan.',
+        };
+      }
+
+      const payload = {
+        user_id: user.id,
+        account_email: email,
+        is_locked: true,
+        locked_family_id: input.lockedFamilyId || null,
+        locked_family_name: famName,
+        locked_family_owner_email: ownerClean || null,
+        cooldown_ends_at: input.cooldownEndsAt ? toIsoTimestamp(input.cooldownEndsAt) : null,
+        notes: input.notes?.trim() || null,
+      };
+
+      const { data, error: upsertErr } = await supabase
+        .from('account_cooldown_locks')
+        .upsert(payload, { onConflict: 'user_id,account_email' })
+        .select(LOCK_SELECT_COLUMNS)
+        .single();
+
+      if (upsertErr || !data) {
+        return { success: false, code: upsertErr?.code, error: mapWriteError(upsertErr) };
+      }
+
+      const mapped = mapLockRow(data);
+      setLocks((prev) => {
+        const exists = prev.some((l) => l.accountEmail === email);
+        return exists
+          ? prev.map((l) => (l.accountEmail === email ? mapped : l))
+          : [...prev, mapped];
+      });
+      return { success: true, data: mapped };
+    },
+    [],
+  );
+
+  const clearManualLock = useCallback(async (rawEmail: string): Promise<ActionResult> => {
+    if (!supabase) return { success: false, error: 'Supabase belum dikonfigurasi.' };
+    const email = normalizeEmail(rawEmail);
+    if (!email) return { success: false, error: 'Email tidak valid.' };
+
+    const { error: delErr } = await supabase
+      .from('account_cooldown_locks')
+      .delete()
+      .eq('account_email', email);
+
+    if (delErr) {
+      return { success: false, code: delErr.code, error: mapWriteError(delErr) };
+    }
+
+    setLocks((prev) => prev.filter((l) => l.accountEmail !== email));
+    return { success: true };
+  }, []);
+
   return {
     entries,
+    locks,
     loading,
     error,
     migrationMissing,
@@ -337,5 +472,7 @@ export function useAccountFamilyHistory(enabled = true) {
     addManualHistory,
     updateHistory,
     deleteHistory,
+    upsertManualLock,
+    clearManualLock,
   };
 }
