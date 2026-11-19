@@ -311,7 +311,8 @@ export default function Dashboard({ onLogout }) {
     const results = [];
 
     families.forEach((family) => {
-      if (!showBanned && (family.isBanned || family.is_banned)) return;
+      const isBanned = Boolean(family.isBanned || family.is_banned);
+      const isIssue = isFamilyAttentionNeeded(family, connectedAccounts, families);
 
       if (family.name?.toLowerCase().includes(query)) {
         results.push({
@@ -319,6 +320,8 @@ export default function Dashboard({ onLogout }) {
           familyName: family.name || 'Family Plan',
           role: 'Family',
           email: family.name || 'Family Plan',
+          isIssue,
+          isBanned,
         });
       }
 
@@ -328,6 +331,8 @@ export default function Dashboard({ onLogout }) {
           familyName: family.name || 'Family Plan',
           role: 'Owner',
           email: family.ownerEmail,
+          isIssue,
+          isBanned,
         });
       }
 
@@ -338,25 +343,57 @@ export default function Dashboard({ onLogout }) {
             familyName: family.name || 'Family Plan',
             role: 'Member',
             email: member.email || member.name,
+            isIssue,
+            isBanned,
           });
         }
       });
     });
 
     setSearchResult(results.length > 0 ? results : 'not_found');
-  }, [families, searchQuery, showBanned]);
+  }, [families, searchQuery, connectedAccounts]);
 
   const handleResultClick = useCallback((familyId, isMember, email, role) => {
+    const targetFamily = families.find((f) => f.id === familyId);
+    if (targetFamily) {
+      const targetIsBanned = Boolean(targetFamily.isBanned || targetFamily.is_banned);
+      const targetIsIssue = isFamilyAttentionNeeded(targetFamily, connectedAccounts, families);
+
+      if (targetIsBanned && !showBanned) {
+        setShowBanned(true);
+      }
+
+      if (targetIsIssue) {
+        if (filter !== 'issues' && !showIssues) {
+          setFilter('issues');
+        }
+      } else {
+        const days = getDaysRemaining(targetFamily.expiryDate);
+        const matchesCurrentFilter =
+          filter === 'all' ||
+          (filter === 'full' && isFamilyFull(targetFamily)) ||
+          (filter === 'available' && !isFamilyFull(targetFamily)) ||
+          (filter === 'expiring' && days !== null && days >= 0 && days <= 7);
+
+        if (!matchesCurrentFilter) {
+          setFilter('all');
+        }
+      }
+    }
+
     setActiveHighlight({ familyId, expand: isMember, matchedEmail: email, role });
     setActiveIndex(-1); // Reset keyboard selection on click
 
-    // Scroll to the card after state propagation
-    setTimeout(() => {
+    // Scroll to the card after filter/tab switch & layout settle (retry briefly if AnimatePresence is mounting)
+    const scrollToCard = (attempt = 0) => {
       const element = document.getElementById(`family-card-${familyId}`);
       if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } else if (attempt < 6) {
+        setTimeout(() => scrollToCard(attempt + 1), 80);
       }
-    }, 100);
+    };
+    setTimeout(() => scrollToCard(0), 100);
 
     // Reset highlight after 3 seconds
     setTimeout(() => {
@@ -367,7 +404,7 @@ export default function Dashboard({ onLogout }) {
         return prev;
       });
     }, 3000);
-  }, []);
+  }, [families, connectedAccounts, filter, showIssues, showBanned]);
 
   const handleKeyDown = useCallback((e) => {
     if (!searchResult || searchResult === 'not_found' || searchResult.length === 0) {
@@ -752,7 +789,17 @@ export default function Dashboard({ onLogout }) {
                             )}
                             <span className={cn('font-medium', theme === 'light' ? 'text-stone-900' : 'text-stone-50')}>{result.email}</span>
                           </div>
-                          <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-end">
+                            {result.isBanned && (
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-widest border font-bold border-red-500/40 bg-red-500/10 text-red-600 dark:text-red-400">
+                                Banned
+                              </span>
+                            )}
+                            {result.isIssue && (
+                              <span className="px-2 py-0.5 text-[10px] uppercase tracking-widest border font-bold border-amber-500/40 bg-amber-500/10 text-amber-700 dark:text-amber-400">
+                                Expired
+                              </span>
+                            )}
                             <span
                               className={cn(
                                 'px-2 py-1 text-[10px] uppercase tracking-widest border font-bold',

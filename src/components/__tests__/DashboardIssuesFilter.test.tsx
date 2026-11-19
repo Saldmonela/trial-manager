@@ -154,4 +154,31 @@ describe('Dashboard Bermasalah / Expired filter tab & hide toggle', () => {
       'Dropped 15GB Family',
     ]);
   });
+
+  it('automatically switches between active and expired tabs when clicking a search result', () => {
+    render(<Dashboard onLogout={vi.fn()} />);
+
+    // Mulai di tampilan aktif (Dropped 15GB Family tidak tampil)
+    expect(screen.queryByText('Dropped 15GB Family')).not.toBeInTheDocument();
+
+    // Cari email dari family yang berada di Bermasalah / Expired
+    const searchInput = screen.getByRole('textbox');
+    fireEvent.change(searchInput, { target: { value: 'low15@test.com' } });
+    fireEvent.keyDown(searchInput, { key: 'Enter' });
+
+    const expiredResult = screen.getByText('low15@test.com');
+    fireEvent.click(expiredResult);
+
+    // Otomatis pindah ke tab Bermasalah / Expired sehingga kartunya muncul
+    expect(screen.getAllByTestId('family-card').map((el) => el.textContent)).toContain('Dropped 15GB Family');
+
+    // Sekarang sedang di tab Bermasalah / Expired -> cari family aktif (five5tb@test.com)
+    fireEvent.change(searchInput, { target: { value: 'five5tb@test.com' } });
+    fireEvent.keyDown(searchInput, { key: 'Enter' });
+
+    fireEvent.click(screen.getByText('five5tb@test.com'));
+
+    // Otomatis pindah kembali ke Semua Keluarga sehingga kartu aktifnya muncul
+    expect(screen.getAllByTestId('family-card').map((el) => el.textContent)).toContain('Healthy 5TB Family');
+  });
 });
