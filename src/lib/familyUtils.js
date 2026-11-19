@@ -3,12 +3,14 @@
  * Extracted from useLocalStorage.js to keep hooks focused.
  */
 import { translations } from '../constants/translations';
+import { formatBytes } from '../utils';
 
 export const MAX_FAMILY_SLOTS = 5;
 export const MAX_STORAGE_GB = 5120;
 
 const GB_BYTES = 1_000_000_000;
 const GIB_BYTES = 1024 * 1024 * 1024;
+const LOW_QUOTA_CEILING_BYTES = 15.1 * GIB_BYTES;
 
 /**
  * Mendeteksi apakah kuota total Google Drive berada di tier bermasalah (5 GB atau 15 GB).
@@ -21,6 +23,89 @@ export function detectLowStorageTier(totalBytes) {
   if (n >= 4.9 * GB_BYTES && n <= 5.1 * GIB_BYTES) return '5GB';
   if (n >= 14.9 * GB_BYTES && n <= 15.1 * GIB_BYTES) return '15GB';
   return null;
+}
+
+/**
+ * Mengembalikan true jika kuota total Drive terhubung berada di <= 15 GB (termasuk 5 GB, 15 GB, atau < 15 GB).
+ */
+export function isLowDriveQuotaBytes(totalBytes) {
+  if (totalBytes === null || totalBytes === undefined) return false;
+  const n = Number(totalBytes);
+  return Number.isFinite(n) && n > 0 && n <= LOW_QUOTA_CEILING_BYTES;
+}
+
+/**
+ * Menghitung info pool Google Drive terhubung untuk satu family (1 family = 1 pool Google One).
+ */
+export function getFamilyPoolInfo(family, connectedAccounts = []) {
+  const emails = new Set();
+  if (family?.ownerEmail) emails.add(family.ownerEmail.toLowerCase());
+  (family?.members || []).forEach((m) => m.email && emails.add(m.email.toLowerCase()));
+
+  const connected = (connectedAccounts || []).filter(
+    (a) => a.status === 'connected' && a.email && emails.has(a.email.toLowerCase()),
+  );
+  const ownerEmail = family?.ownerEmail?.toLowerCase();
+  const ownerAccount = ownerEmail
+    ? connected.find((a) => a.email?.toLowerCase() === ownerEmail) || null
+    : null;
+
+  if (connected.length === 0) {
+    return { hasLive: false, ownerAccount: null, poolUsed: 0, poolLimit: null, isUnlimited: false };
+  }
+
+  const isUnlimited = connected.some((a) => a.totalBytes === null || a.totalBytes === undefined);
+  const poolLimit = isUnlimited ? null : Math.max(...connected.map((a) => Number(a.totalBytes) || 0));
+  const poolUsed = Math.max(...connected.map((a) => Number(a.usedBytes) || 0));
+
+  return { hasLive: true, ownerAccount, poolUsed, poolLimit, isUnlimited };
+}
+
+/**
+ * Mengembalikan label tier storage bermasalah ('5GB', '15GB', atau ukuran lain <= 15 GB), atau null bila normal.
+ */
+export function getFamilyLowStorageLabel(family, connectedAccounts = []) {
+  const { ownerAccount, hasLive, poolLimit, isUnlimited } = getFamilyPoolInfo(family, connectedAccounts);
+  const candidateBytes = ownerAccount
+    ? ownerAccount.totalBytes
+    : (hasLive && !isUnlimited ? poolLimit : null);
+  if (candidateBytes === null || candidateBytes === undefined) return null;
+  const tier = detectLowStorageTier(candidateBytes);
+  if (tier) return tier;
+  if (isLowDriveQuotaBytes(candidateBytes)) {
+    return formatBytes(candidateBytes, 0);
+  }
+  return null;
+}
+
+/**
+ * Mengembalikan true jika ada member pembeli dengan masa aktif melampaui masa aktif grup family.
+ */
+export function hasFamilyExpiryGapWarning(family) {
+  if (!family?.expiryDate || !family?.members?.length) return false;
+  const familyExpiryTime = new Date(family.expiryDate).getTime();
+  if (Number.isNaN(familyExpiryTime)) return false;
+
+  return family.members.some((m) => {
+    const isBuyer = (m.memberType || m.member_type) === 'pembeli';
+    const rawMemberExpiry = m.expiryDate || m.expiry_date;
+    if (!isBuyer || !rawMemberExpiry) return false;
+    const memberExpiryTime = new Date(rawMemberExpiry).getTime();
+    return !Number.isNaN(memberExpiryTime) && memberExpiryTime > familyExpiryTime;
+  });
+}
+
+/**
+ * Menentukan apakah family masuk kategori "Bermasalah / Expired" (bertanda merah, expired, atau Drive <= 15 GB).
+ */
+export function isFamilyAttentionNeeded(family, connectedAccounts = []) {
+  if (!family) return false;
+  if (family.isBanned || family.is_banned) return true;
+  const days = getDaysRemaining(family.expiryDate);
+  if (days !== null && days <= 3) return true; // Expired (< 0) atau kritis merah (0..3 hari)
+  if (hasFamilyExpiryGapWarning(family)) return true;
+  if (getFamilyLowStorageLabel(family, connectedAccounts) !== null) return true;
+  return false;
 }
 
 /**

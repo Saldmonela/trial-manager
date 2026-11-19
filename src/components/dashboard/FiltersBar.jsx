@@ -16,6 +16,9 @@ export default function FiltersBar({
   onSortClick,
   showBanned,
   onToggleBanned,
+  showIssues = false,
+  onToggleIssues,
+  issuesCount = 0,
 }) {
   return (
     <div
@@ -32,25 +35,33 @@ export default function FiltersBar({
             { key: 'available', label: t('dashboard.filters.available') },
             { key: 'full', label: t('dashboard.filters.full') },
             { key: 'expiring', label: t('dashboard.filters.expiring_soon') },
+            { key: 'issues', label: t('dashboard.filters.issues'), badgeCount: issuesCount, isAlert: true },
             { key: 'all', label: t('dashboard.filters.all') },
           ].map((f) => (
             <button
               key={f.key}
               onClick={() => setFilter(f.key)}
               className={cn(
-                'text-sm transition-all duration-300 relative py-2',
+                'text-sm transition-all duration-300 relative py-2 flex items-center gap-1.5',
                 filter === f.key
-                  ? cn('font-semibold', theme === 'light' ? 'text-stone-900' : 'text-stone-50')
-                  : cn('font-medium', theme === 'light'
-                      ? 'text-stone-500 hover:text-stone-700'
-                      : 'text-stone-400 hover:text-stone-200')
+                  ? cn('font-semibold', f.isAlert ? 'text-red-600 dark:text-red-400' : (theme === 'light' ? 'text-stone-900' : 'text-stone-50'))
+                  : cn('font-medium', f.isAlert && f.badgeCount > 0
+                      ? 'text-red-600/80 hover:text-red-700 dark:text-red-400/80 dark:hover:text-red-300'
+                      : (theme === 'light'
+                        ? 'text-stone-500 hover:text-stone-700'
+                        : 'text-stone-400 hover:text-stone-200'))
               )}
             >
-              {f.label}
+              <span>{f.label}</span>
+              {f.badgeCount > 0 && (
+                <span className="px-1.5 py-0.5 text-[10px] leading-none font-bold rounded-full bg-red-500 text-white tabular-nums">
+                  {f.badgeCount}
+                </span>
+              )}
               {filter === f.key && (
                 <motion.div
                   layoutId="activeFilter"
-                  className="absolute bottom-0 left-0 right-0 h-0.5 bg-gold-500"
+                  className={cn('absolute bottom-0 left-0 right-0 h-0.5', f.isAlert ? 'bg-red-500' : 'bg-gold-500')}
                 />
               )}
             </button>
@@ -59,21 +70,44 @@ export default function FiltersBar({
 
         <div className={cn("h-4 w-px hidden sm:block", theme === 'light' ? "bg-stone-300" : "bg-stone-800")} />
 
-        <button
-          onClick={() => onToggleBanned?.()}
-          className={cn(
-            "text-[10px] sm:text-xs uppercase tracking-wider font-semibold py-1.5 px-3 border transition-all duration-300",
-            showBanned
-              ? theme === 'light'
-                ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/80"
-                : "border-red-900/50 bg-red-950/20 text-red-400 hover:bg-red-900/40"
-              : theme === 'light'
-                ? "border-stone-300 text-stone-500 hover:text-stone-700 hover:border-stone-400 bg-white"
-                : "border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700 bg-stone-900/30"
-          )}
-        >
-          {showBanned ? t('dashboard.filters.hide_banned') : t('dashboard.filters.show_banned')}
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            onClick={() => onToggleIssues?.()}
+            className={cn(
+              "text-[10px] sm:text-xs uppercase tracking-wider font-semibold py-1.5 px-3 border transition-all duration-300 flex items-center gap-1.5",
+              showIssues
+                ? theme === 'light'
+                  ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/80"
+                  : "border-red-900/50 bg-red-950/20 text-red-400 hover:bg-red-900/40"
+                : theme === 'light'
+                  ? "border-stone-300 text-stone-500 hover:text-stone-700 hover:border-stone-400 bg-white"
+                  : "border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700 bg-stone-900/30"
+            )}
+          >
+            <span>{showIssues ? t('dashboard.filters.hide_issues') : t('dashboard.filters.show_issues')}</span>
+            {issuesCount > 0 && (
+              <span className="px-1.5 py-0.5 text-[10px] leading-none font-bold rounded-full bg-red-500 text-white tabular-nums">
+                {issuesCount}
+              </span>
+            )}
+          </button>
+
+          <button
+            onClick={() => onToggleBanned?.()}
+            className={cn(
+              "text-[10px] sm:text-xs uppercase tracking-wider font-semibold py-1.5 px-3 border transition-all duration-300",
+              showBanned
+                ? theme === 'light'
+                  ? "border-red-200 bg-red-50 text-red-700 hover:bg-red-100/80"
+                  : "border-red-900/50 bg-red-950/20 text-red-400 hover:bg-red-900/40"
+                : theme === 'light'
+                  ? "border-stone-300 text-stone-500 hover:text-stone-700 hover:border-stone-400 bg-white"
+                  : "border-stone-800 text-stone-400 hover:text-stone-200 hover:border-stone-700 bg-stone-900/30"
+            )}
+          >
+            {showBanned ? t('dashboard.filters.hide_banned') : t('dashboard.filters.show_banned')}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-2 md:gap-4">

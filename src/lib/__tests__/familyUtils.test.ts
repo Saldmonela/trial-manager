@@ -15,6 +15,10 @@ import {
   formatDuration,
   detectLowStorageTier,
   getLowStorageAlerts,
+  isLowDriveQuotaBytes,
+  getFamilyLowStorageLabel,
+  hasFamilyExpiryGapWarning,
+  isFamilyAttentionNeeded,
 } from '../familyUtils';
 
 describe('familyUtils', () => {
@@ -313,6 +317,44 @@ describe('familyUtils', () => {
       const alerts = getLowStorageAlerts(sampleResults, { onlyNewlyExpired: true });
       expect(alerts).toHaveLength(1);
       expect(alerts[0].id).toBe('acc-1');
+    });
+  });
+
+  describe('isLowDriveQuotaBytes & isFamilyAttentionNeeded', () => {
+    const inDays = (days: number) => new Date(Date.now() + days * 86400_000).toISOString();
+
+    it('detects <= 15GB drive quotas including < 15GB', () => {
+      expect(isLowDriveQuotaBytes(5 * 1024 ** 3)).toBe(true);
+      expect(isLowDriveQuotaBytes(10 * 1024 ** 3)).toBe(true);
+      expect(isLowDriveQuotaBytes(15 * 1024 ** 3)).toBe(true);
+      expect(isLowDriveQuotaBytes(2 * 1024 ** 4)).toBe(false);
+      expect(isLowDriveQuotaBytes(null)).toBe(false);
+    });
+
+    it('groups expired, red critical, member gap, and <=15GB families into attention-needed', () => {
+      const accounts = [
+        { email: 'low15@example.test', status: 'connected', totalBytes: 15 * 1024 ** 3, usedBytes: 1024 ** 3 },
+        { email: 'low10@example.test', status: 'connected', totalBytes: 10 * 1024 ** 3, usedBytes: 1024 ** 3 },
+        { email: 'healthy@example.test', status: 'connected', totalBytes: 2 * 1024 ** 4, usedBytes: 100 * 1024 ** 3 },
+      ];
+
+      expect(isFamilyAttentionNeeded({ id: '1', ownerEmail: 'healthy@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(false);
+      expect(isFamilyAttentionNeeded({ id: '2', ownerEmail: 'healthy@example.test', expiryDate: inDays(5), members: [] }, accounts)).toBe(false);
+      expect(isFamilyAttentionNeeded({ id: '3', ownerEmail: 'healthy@example.test', expiryDate: inDays(-1), members: [] }, accounts)).toBe(true);
+      expect(isFamilyAttentionNeeded({ id: '4', ownerEmail: 'healthy@example.test', expiryDate: inDays(2), members: [] }, accounts)).toBe(true);
+      expect(isFamilyAttentionNeeded({ id: '5', ownerEmail: 'low15@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
+      expect(isFamilyAttentionNeeded({ id: '6', ownerEmail: 'low10@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
+      expect(getFamilyLowStorageLabel({ id: '6', ownerEmail: 'low10@example.test', members: [] }, accounts)).toBe('10 GB');
+      expect(hasFamilyExpiryGapWarning({
+        id: '7',
+        expiryDate: inDays(10),
+        members: [{ memberType: 'pembeli', expiryDate: inDays(40) }],
+      })).toBe(true);
+      expect(isFamilyAttentionNeeded({
+        id: '7',
+        expiryDate: inDays(10),
+        members: [{ memberType: 'pembeli', expiryDate: inDays(40) }],
+      }, accounts)).toBe(true);
     });
   });
 });

@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
-import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts } from '../lib/familyUtils';
+import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts, isFamilyAttentionNeeded } from '../lib/familyUtils';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
 import { useToast } from '../hooks/useToast';
@@ -232,6 +232,7 @@ export default function Dashboard({ onLogout }) {
   const [deleteFamilyId, setDeleteFamilyId] = useState(null);
   const [filter, setFilter] = useState('all');
   const [showBanned, setShowBanned] = useState(false);
+  const [showIssues, setShowIssues] = useState(false);
   const [sortBy, setSortBy] = useState('created');
   const [sortDirection, setSortDirection] = useState('desc');
   const [searchQuery, setSearchQuery] = useState('');
@@ -484,6 +485,9 @@ export default function Dashboard({ onLogout }) {
     const filtered = families.filter((f) => {
       if (!showBanned && (f.isBanned || f.is_banned)) return false;
 
+      if (filter === 'issues') return isFamilyAttentionNeeded(f, connectedAccounts);
+      if (!showIssues && isFamilyAttentionNeeded(f, connectedAccounts)) return false;
+
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
       if (filter === 'available') return !isFamilyFull(f);
@@ -532,7 +536,17 @@ export default function Dashboard({ onLogout }) {
 
       return sortDirection === 'asc' ? comparison : -comparison;
     });
-  }, [families, filter, sortBy, sortDirection, showBanned, connectedAccounts]);
+  }, [families, filter, sortBy, sortDirection, showBanned, showIssues, connectedAccounts]);
+
+  const handleToggleIssues = useCallback(() => {
+    setShowIssues((prev) => {
+      const next = !prev;
+      if (!next && filter === 'issues') {
+        setFilter('all');
+      }
+      return next;
+    });
+  }, [filter]);
 
   const stats = useMemo(() => {
     const activeFamilies = families.filter(f => !f.isBanned);
@@ -551,6 +565,13 @@ export default function Dashboard({ onLogout }) {
       return days !== null && days <= 7 && days >= 0;
     }).length;
   }, [families]);
+
+  const issuesCount = useMemo(() => {
+    return families.filter((f) => {
+      if (!showBanned && (f.isBanned || f.is_banned)) return false;
+      return isFamilyAttentionNeeded(f, connectedAccounts);
+    }).length;
+  }, [families, showBanned, connectedAccounts]);
 
   if (loading) {
     return (
@@ -772,6 +793,9 @@ export default function Dashboard({ onLogout }) {
           onSortClick={handleSortClick}
           showBanned={showBanned}
           onToggleBanned={() => setShowBanned(prev => !prev)}
+          showIssues={showIssues}
+          onToggleIssues={handleToggleIssues}
+          issuesCount={issuesCount}
         />
 
         <FamiliesGrid
@@ -782,6 +806,7 @@ export default function Dashboard({ onLogout }) {
           onClearFilters={() => {
             setFilter('all');
             setShowBanned(false);
+            setShowIssues(false);
           }}
           onOpenAddFamily={() => setIsAddFamilyOpen(true)}
           onDelete={handleDeleteFamily}

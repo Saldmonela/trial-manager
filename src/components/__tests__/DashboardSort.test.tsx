@@ -86,9 +86,9 @@ vi.mock('../dashboard/FamiliesGrid', () => ({
 
 // Mock hooks
 const mockFamilies = [
-  { id: 1, name: 'OldestCreated', expiryDate: '2026-01-01', createdAt: '2020-01-01', storageUsed: 10, members: [] },
-  { id: 2, name: 'NewestCreated', expiryDate: '2025-01-01', createdAt: '2024-01-01', storageUsed: 50, members: [] },
-  { id: 3, name: 'MiddleCreated', expiryDate: '2025-06-01', createdAt: '2022-01-01', storageUsed: 30, members: [] },
+  { id: 1, name: 'OldestCreated', expiryDate: '2028-01-01', createdAt: '2020-01-01', storageUsed: 10, members: [] },
+  { id: 2, name: 'NewestCreated', expiryDate: '2027-01-01', createdAt: '2024-01-01', storageUsed: 50, members: [] },
+  { id: 3, name: 'MiddleCreated', expiryDate: '2027-06-01', createdAt: '2022-01-01', storageUsed: 30, members: [] },
 ];
 
 const useSupabaseDataMock = vi.fn();

@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { RefreshCw, Trash2, AlertCircle, Cloud, AlertTriangle } from 'lucide-react';
 import { cn, formatBytes } from '../../utils';
-import { detectLowStorageTier } from '../../lib/familyUtils';
+import { detectLowStorageTier, isLowDriveQuotaBytes } from '../../lib/familyUtils';
 
 function timeAgo(iso) {
   if (!iso) return 'never';
@@ -29,7 +29,8 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
 
   const isUnlimited = account.totalBytes === null;
   const isDisconnected = account.status === 'disconnected';
-  const lowStorageTier = detectLowStorageTier(account.totalBytes);
+  const lowStorageTier = detectLowStorageTier(account.totalBytes)
+    || (isLowDriveQuotaBytes(account.totalBytes) ? formatBytes(account.totalBytes, 0) : null);
 
   // Mode simulasi: used = simulatePct% dari total akun ASLI (untuk pratinjau warna).
   const simulating = simulatePct != null && !isUnlimited && account.totalBytes > 0;

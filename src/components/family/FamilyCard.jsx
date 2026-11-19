@@ -11,7 +11,7 @@ import {
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
   isFamilyFull, getDaysRemaining, getExpiryStatus,
-  detectLowStorageTier
+  getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning
 } from '../../lib/familyUtils';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -180,47 +180,19 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
   // Pool gabungan family: 1 family = 1 pool Google One. Limit dihitung SEKALI;
   // used = pemakaian semua anggota (real utk akun terhubung + manual utk yang belum).
   const familyPool = useMemo(() => {
-    const emails = new Set();
-    if (family.ownerEmail) emails.add(family.ownerEmail.toLowerCase());
-    (family.members || []).forEach((m) => m.email && emails.add(m.email.toLowerCase()));
-
-    const accts = (connectedAccounts || []).filter(
-      (a) => a.status === 'connected' && a.email && emails.has(a.email.toLowerCase()),
-    );
-    if (accts.length === 0) return { hasLive: false };
-
-    // 1 family = 1 pool Google One. Tiap akun melaporkan angka POOL yang SAMA
-    // (limit & usage identik di seluruh anggota), jadi ambil SATU nilai (max) —
-    // JANGAN dijumlah (kalau dijumlah jadi double-count: 586GB×2 = 1.2TB).
-    const isUnlimited = accts.some((a) => a.totalBytes === null || a.totalBytes === undefined);
-    const poolLimit = isUnlimited ? null : Math.max(...accts.map((a) => Number(a.totalBytes) || 0));
-    const poolUsed = Math.max(...accts.map((a) => Number(a.usedBytes) || 0));
-
-    return { hasLive: true, poolUsed, poolLimit, isUnlimited };
-  }, [connectedAccounts, family.ownerEmail, family.members]);
+    if (readOnly) return { hasLive: false, ownerAccount: null, poolUsed: 0, poolLimit: null, isUnlimited: false };
+    return getFamilyPoolInfo(family, connectedAccounts);
+  }, [readOnly, family, connectedAccounts]);
 
   const lowStorageTier = useMemo(() => {
     if (readOnly) return null;
-    const ownerTier = driveAccount ? detectLowStorageTier(driveAccount.totalBytes) : null;
-    if (ownerTier) return ownerTier;
-    if (familyPool.hasLive && !familyPool.isUnlimited) {
-      return detectLowStorageTier(familyPool.poolLimit);
-    }
-    return null;
-  }, [readOnly, driveAccount, familyPool]);
+    return getFamilyLowStorageLabel(family, connectedAccounts);
+  }, [readOnly, family, connectedAccounts]);
 
-  const hasExpiryWarning = useMemo(() => {
-    if (!family.expiryDate || !family.members || family.members.length === 0) return false;
-    const familyExpiryTime = new Date(family.expiryDate).getTime();
-
-    return family.members.some((m) => {
-      const isBuyer = (m.memberType || m.member_type) === 'pembeli';
-      if (!isBuyer || !(m.expiryDate || m.expiry_date)) return false;
-
-      const memberExpiryTime = new Date(m.expiryDate || m.expiry_date).getTime();
-      return memberExpiryTime > familyExpiryTime;
-    });
-  }, [family.expiryDate, family.members]);
+  const hasExpiryWarning = useMemo(
+    () => hasFamilyExpiryGapWarning(family),
+    [family],
+  );
 
   const copyTimerRef = useRef(null);
 
