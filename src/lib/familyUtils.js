@@ -143,7 +143,16 @@ export function isFamilyValidStorage(family, connectedAccounts = [], allFamilies
 }
 
 /**
+ * Mengembalikan true jika family ditandai PRO Hilang / Turun ke FREE (downgraded_free).
+ */
+export function isFamilyDowngraded(family) {
+  if (!family) return false;
+  return (family.planStatus || family.plan_status) === 'downgraded_free';
+}
+
+/**
  * Menentukan apakah family masuk kategori "Bermasalah / Expired":
+ * - Jika family ditandai PRO Hilang / Turun ke FREE (downgraded_free): selalu bermasalah.
  * - Jika akun owner tercatat sebagai member di family lain: selalu dianggap expired/bermasalah
  *   karena kuota Drive 5 TB berasal dari family tempat ia bergabung, bukan paket owner ini.
  * - Jika terhubung ke Drive: dianggap bermasalah/expired bila storage turun menjadi < 5 TB (mis. 5 GB, 15 GB, 2 TB).
@@ -152,6 +161,7 @@ export function isFamilyValidStorage(family, connectedAccounts = [], allFamilies
  */
 export function isFamilyAttentionNeeded(family, connectedAccounts = [], allFamilies = []) {
   if (!family) return false;
+  if (isFamilyDowngraded(family)) return true;
   if (findOwnerJoinedAsMemberFamily(family, allFamilies)) return true;
   const { hasLive } = getFamilyPoolInfo(family, connectedAccounts);
   if (hasLive) {

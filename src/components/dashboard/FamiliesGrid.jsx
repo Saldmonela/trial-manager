@@ -27,6 +27,15 @@ export default function FamiliesGrid({
   onConnectDrive,
   onSyncDrive,
   onDisconnectDrive,
+  cockpitAccounts = [],
+  historyEntries = [],
+  cooldownByEmail = null,
+  historyLoading = false,
+  historyError = null,
+  onRetryHistory,
+  onOpenHistory,
+  onTogglePlanStatus,
+  onMigrateAccount,
 }) {
   if (sortedFamilies.length === 0) {
     if (hasAnyFamilies) {
@@ -148,6 +157,15 @@ export default function FamiliesGrid({
             onConnectDrive={onConnectDrive}
             onSyncDrive={onSyncDrive}
             onDisconnectDrive={onDisconnectDrive}
+            cockpitAccounts={cockpitAccounts}
+            historyEntries={historyEntries}
+            cooldownByEmail={cooldownByEmail}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            onRetryHistory={onRetryHistory}
+            onOpenHistory={onOpenHistory}
+            onTogglePlanStatus={onTogglePlanStatus}
+            onMigrateAccount={onMigrateAccount}
           />
         ))}
       </AnimatePresence>

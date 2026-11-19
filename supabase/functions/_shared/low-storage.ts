@@ -78,13 +78,30 @@ export async function expireFamiliesForLowStorage(
   if (toExpire.length === 0) return { lowStorageTier: tier, expiredFamilies: [] };
 
   const expiredIso = new Date(nowMs - 2 * ONE_DAY_MS).toISOString();
+  const downgradedIso = new Date(nowMs).toISOString();
+  const downgradeNote = `Terdeteksi otomatis: storage Drive turun ke ${tier}`;
   const ids = toExpire.map((f) => String(f.id));
   const { error: updateError } = await svc
     .from('families')
-    .update({ expiry_date: expiredIso })
+    .update({
+      expiry_date: expiredIso,
+      plan_status: 'downgraded_free',
+      downgraded_at: downgradedIso,
+      downgrade_note: downgradeNote,
+    })
     .in('id', ids)
     .is('archived_at', null);
-  checkDb(updateError);
+  if (updateError && (updateError.code === '42703' || (updateError.message || '').includes('plan_status'))) {
+    // Fallback aman bila migrasi 202611200001 belum dijalankan di DB
+    const { error: legacyErr } = await svc
+      .from('families')
+      .update({ expiry_date: expiredIso })
+      .in('id', ids)
+      .is('archived_at', null);
+    checkDb(legacyErr);
+  } else {
+    checkDb(updateError);
+  }
 
   const auditRows = toExpire.map((f) => ({
     actor_id: params.actorId,

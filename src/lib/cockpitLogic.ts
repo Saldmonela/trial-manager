@@ -7,6 +7,7 @@ import {
   getSlotsAvailable,
   getSlotsUsed,
   isFamilyAttentionNeeded,
+  isFamilyDowngraded,
 } from './familyUtils';
 import {
   getArgonQuotaPct,
@@ -14,7 +15,9 @@ import {
   isPriorityCockpitAccount,
   normalizeEmail,
 } from './cockpitParser';
+import { computeAccountCooldown } from './cooldownLogic';
 import type {
+  AccountFamilyHistoryEntry,
   CockpitAccount,
   CockpitAccountView,
   CockpitConflictGroup,
@@ -34,6 +37,9 @@ export type CockpitFilterKey =
   | 'free_candidates'
   | 'in_pro_family'
   | 'conflicts'
+  | 'cooldown_active'
+  | 'family_downgraded'
+  | 'safe_to_move'
   | 'no_argon'
   | 'need_verif'
   | 'banned'
@@ -49,6 +55,10 @@ export interface CockpitSummaryMetrics {
   freeCandidatesCount: number;
   conflictGroupsCount: number;
   conflictAccountsCount: number;
+  cooldownLockedCount: number;
+  downgradedAffectedCount: number;
+  safeToMoveCount: number;
+  unlockingSoonCount: number;
   noArgonCount: number;
   needVerifCount: number;
   bannedCount: number;
@@ -74,6 +84,7 @@ export function isFamilyActiveForPro(
 ): boolean {
   if (!family) return false;
   if (isFamilyBanned(family)) return false;
+  if (isFamilyDowngraded(family)) return false;
   if (family.isActive === false) return false;
   if (isFamilyAttentionNeeded(family, connectedAccounts, allFamilies)) return false;
   return true;
@@ -129,9 +140,12 @@ export function buildCockpitOverview(
   families: Family[],
   connectedAccounts: ConnectedAccount[] = [],
   nowMs = Date.now(),
+  historyEntries: AccountFamilyHistoryEntry[] = [],
 ): CockpitOverviewData {
   // Index semua family berdasarkan email owner dan member (BR-01: case-insensitive + trim)
   const emailToMatches = new Map<string, CockpitFamilyMatch[]>();
+  const familyById = new Map<string, Family>();
+  const memberAddedAtByKey = new Map<string, string | null>();
 
   const pushMatch = (rawEmail: string | null | undefined, match: CockpitFamilyMatch) => {
     const normalized = normalizeEmail(rawEmail);
@@ -145,6 +159,7 @@ export function buildCockpitOverview(
   };
 
   for (const family of families) {
+    familyById.set(family.id, family);
     const active = isFamilyActiveForPro(family, connectedAccounts, families);
     const banned = isFamilyBanned(family);
     const expiryDate = family.expiryDate ?? null;
@@ -161,6 +176,10 @@ export function buildCockpitOverview(
 
     pushMatch(family.ownerEmail, { ...base, role: 'owner' });
     for (const member of family.members || []) {
+      const mEmail = normalizeEmail(member.email);
+      if (mEmail) {
+        memberAddedAtByKey.set(`${family.id}:${mEmail}`, member.addedAt || member.added_at || null);
+      }
       pushMatch(member.email, { ...base, role: 'member' });
     }
   }
@@ -214,11 +233,16 @@ export function buildCockpitOverview(
   let uniqueProCount = 0;
   let freeCandidatesCount = 0;
   let conflictAccountsCount = 0;
+  let cooldownLockedCount = 0;
+  let downgradedAffectedCount = 0;
+  let safeToMoveCount = 0;
+  let unlockingSoonCount = 0;
   let noArgonCount = 0;
   let needVerifCount = 0;
   let bannedCount = 0;
   let untaggedCount = 0;
   let isAnyStale = false;
+  const nowDate = new Date(nowMs);
 
   const views: CockpitAccountView[] = cockpitAccounts.map((account) => {
     const email = normalizeEmail(account.email);
@@ -228,6 +252,20 @@ export function buildCockpitOverview(
     const matches = emailToMatches.get(email) || [];
     const activeMatches = matches.filter((m) => m.isActiveFamily);
     const primaryMatch = activeMatches[0] || matches[0] || null;
+    const downgradedMatch =
+      matches.find((m) => isFamilyDowngraded(familyById.get(m.familyId))) || null;
+    const isInDowngradedFamily = Boolean(downgradedMatch && activeMatches.length === 0);
+
+    const liveHint = primaryMatch
+      ? {
+          familyId: primaryMatch.familyId,
+          familyName: primaryMatch.familyName,
+          ownerEmail: primaryMatch.ownerEmail,
+          joinedAt: memberAddedAtByKey.get(`${primaryMatch.familyId}:${email}`) ?? null,
+        }
+      : null;
+
+    const cooldown = computeAccountCooldown(email, historyEntries, nowDate, liveHint);
 
     const syncedTime = account.lastSyncedAt ? new Date(account.lastSyncedAt).getTime() : 0;
     if (syncedTime > latestSyncTime) {
@@ -284,6 +322,16 @@ export function buildCockpitOverview(
       noArgonCount += 1;
     }
 
+    if (cooldown.status === 'cooldown_active') {
+      cooldownLockedCount += 1;
+      if (cooldown.isUnlockingSoon) unlockingSoonCount += 1;
+    } else {
+      safeToMoveCount += 1;
+    }
+    if (isInDowngradedFamily) {
+      downgradedAffectedCount += 1;
+    }
+
     if (isArgonPriority) {
       activeEligibleCount += 1;
       if (hasConflict) {
@@ -311,6 +359,10 @@ export function buildCockpitOverview(
       isFreeCandidate,
       isNearExpiryWithQuota,
       highestQuotaPct,
+      isInDowngradedFamily,
+      downgradedFamilyName: downgradedMatch?.familyName ?? null,
+      downgradedFamilyId: downgradedMatch?.familyId ?? null,
+      cooldown,
     };
   });
 
@@ -328,6 +380,10 @@ export function buildCockpitOverview(
       freeCandidatesCount,
       conflictGroupsCount: conflicts.length,
       conflictAccountsCount,
+      cooldownLockedCount,
+      downgradedAffectedCount,
+      safeToMoveCount,
+      unlockingSoonCount,
       noArgonCount,
       needVerifCount,
       bannedCount,
@@ -351,7 +407,9 @@ export function getRecommendedFamiliesForAccount(
   cockpitAccounts: CockpitAccount[],
   families: Family[],
   connectedAccounts: ConnectedAccount[] = [],
+  options: { prioritizeStability?: boolean } = {},
 ): RecommendedFamily[] {
+  const { prioritizeStability = false } = options;
   const targetEmail = normalizeEmail(targetAccount.email);
   const targetIsPriority = isPriorityCockpitAccount(
     targetAccount.eligibilityStatus,
@@ -413,6 +471,19 @@ export function getRecommendedFamiliesForAccount(
     });
   }
 
+  // US-07: Untuk akun sisa jatah pindah terakhir, utamakan Storage Lega -> Masa Aktif Terlama -> Drive Terhubung -> Slot Terbanyak
+  if (prioritizeStability) {
+    return results.sort((a, b) => {
+      if (a.isStorageLega !== b.isStorageLega) return a.isStorageLega ? -1 : 1;
+      const daysA = a.daysRemaining ?? -1;
+      const daysB = b.daysRemaining ?? -1;
+      if (daysB !== daysA) return daysB - daysA;
+      if (a.hasLiveDrive !== b.hasLiveDrive) return a.hasLiveDrive ? -1 : 1;
+      if (b.slotsAvailable !== a.slotsAvailable) return b.slotsAvailable - a.slotsAvailable;
+      return b.availableBytes - a.availableBytes;
+    });
+  }
+
   // BR-04: Drive terhubung dulu -> Unlimited / availableBytes desc -> slotsAvailable desc -> expiry furthest
   return results.sort((a, b) => {
     if (a.hasLiveDrive !== b.hasLiveDrive) return a.hasLiveDrive ? -1 : 1;
@@ -439,6 +510,9 @@ export function filterAndSortCockpitViews(
       return false;
     }
     if (filter === 'conflicts' && !v.hasConflict) return false;
+    if (filter === 'cooldown_active' && v.cooldown.status !== 'cooldown_active') return false;
+    if (filter === 'family_downgraded' && !v.isInDowngradedFamily) return false;
+    if (filter === 'safe_to_move' && v.cooldown.status === 'cooldown_active') return false;
     if (filter === 'no_argon' && !(v.isActiveEligibility && v.account.argonStatus === 'missing')) {
       return false;
     }

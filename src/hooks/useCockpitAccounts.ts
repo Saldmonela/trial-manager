@@ -16,6 +16,7 @@ import type {
   CockpitImportAccountInput,
   CockpitImportResult,
   CockpitPlanTier,
+  OverrideReasonType,
 } from '../types';
 
 const SELECT_COLUMNS =
@@ -60,6 +61,9 @@ function mapAssignError(rawMsg: string, familyName?: string): string {
   if (rawMsg.includes('ALREADY_IN_FAMILY')) {
     return `Akun ini sudah terdaftar di ${targetLabel}.`;
   }
+  if (rawMsg.includes('FAMILY_DOWNGRADED')) {
+    return `${targetLabel} sedang berstatus PRO Hilang (FREE) dan tidak dapat dipilih sebagai tujuan.`;
+  }
   if (rawMsg.includes('FAMILY_INVALID')) {
     return `${targetLabel} sudah tidak aktif, kedaluwarsa, atau ditandai banned.`;
   }
@@ -83,7 +87,10 @@ export function useCockpitAccounts() {
 
   const refetch = useCallback(async () => {
     try {
-      if (!supabase) throw new Error('NOT_CONFIGURED');
+      if (!supabase || typeof supabase.from !== 'function') {
+        setLoading(false);
+        return;
+      }
       let { data, error: fetchError } = await supabase
         .from('cockpit_accounts')
         .select(SELECT_COLUMNS)
@@ -354,6 +361,11 @@ export function useCockpitAccounts() {
       familyId: string,
       memberName: string,
       familyName?: string,
+      options?: {
+        leavePreviousFamilyId?: string | null;
+        overrideReasonType?: OverrideReasonType | null;
+        overrideNote?: string | null;
+      },
     ): Promise<ActionResult<CockpitAssignResult>> => {
       if (!supabase) return { success: false, error: 'Supabase belum dikonfigurasi.' };
 
@@ -366,11 +378,35 @@ export function useCockpitAccounts() {
         };
       }
 
-      const { data, error: rpcErr } = await supabase.rpc('assign_cockpit_account_to_family', {
+      const fullParams = {
         p_cockpit_account_id: cockpitAccountId,
         p_family_id: familyId,
         p_member_name: trimmedName,
-      });
+        p_leave_previous_family_id: options?.leavePreviousFamilyId ?? null,
+        p_override_reason_type: options?.overrideReasonType ?? null,
+        p_override_note: options?.overrideNote ?? null,
+      };
+
+      let { data, error: rpcErr } = await supabase.rpc(
+        'assign_cockpit_account_to_family',
+        fullParams,
+      );
+
+      // Fallback kompatibel bila RPC v2 (6 parameter) belum dimigrasi di DB
+      if (
+        rpcErr &&
+        (rpcErr.code === '42883' ||
+          rpcErr.code === 'PGRST202' ||
+          (rpcErr.message || '').includes('Could not find the function'))
+      ) {
+        const legacyRes = await supabase.rpc('assign_cockpit_account_to_family', {
+          p_cockpit_account_id: cockpitAccountId,
+          p_family_id: familyId,
+          p_member_name: trimmedName,
+        });
+        data = legacyRes.data;
+        rpcErr = legacyRes.error;
+      }
 
       if (rpcErr) {
         return {

@@ -4,8 +4,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
 import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts, isFamilyAttentionNeeded, isFamilyValidStorage } from '../lib/familyUtils';
+import {
+  buildCooldownSummaryMap,
+  computeFamilyDowngradeImpact,
+  isPersonalAccountEmail,
+} from '../lib/cooldownLogic';
+import { normalizeEmail } from '../lib/cockpitParser';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
+import { useCockpitAccounts } from '../hooks/useCockpitAccounts';
+import { useAccountFamilyHistory } from '../hooks/useAccountFamilyHistory';
 import { useToast } from '../hooks/useToast';
 import { supabase } from '../supabaseClient';
 import { useTheme } from '../context/ThemeContext';
@@ -25,6 +33,7 @@ const DeleteMemberConfirmModal = lazy(() => import('./modals/DeleteMemberConfirm
 const MigrationTool = lazy(() => import('./MigrationTool'));
 const TutorialModal = lazy(() => import('./TutorialModal'));
 const SettingsModal = lazy(() => import('./modals/SettingsModal'));
+import AccountFamilyHistoryDrawer from './cooldown/AccountFamilyHistoryDrawer';
 import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
@@ -46,9 +55,26 @@ export default function Dashboard({ onLogout }) {
     addMember, 
     updateMember,
     removeMember,
-    cancelSale
+    cancelSale,
+    setFamilyPlanStatus,
   } = useSupabaseData();
   const { toasts, addToast, removeToast } = useToast();
+  const { accounts: cockpitAccounts } = useCockpitAccounts();
+  const {
+    entries: historyEntries,
+    loading: historyLoading,
+    error: historyError,
+    refetch: refetchHistory,
+    addManualHistory,
+    updateHistory,
+    deleteHistory,
+  } = useAccountFamilyHistory();
+  const [historyDrawerEmail, setHistoryDrawerEmail] = useState(null);
+
+  const cooldownByEmail = useMemo(
+    () => buildCooldownSummaryMap(historyEntries, families, cockpitAccounts),
+    [historyEntries, families, cockpitAccounts],
+  );
 
   // --- Google Drive integration (kuota asli di kartu) ---
   const {
@@ -484,40 +510,112 @@ export default function Dashboard({ onLogout }) {
     return { success: false, error: "Pilih data terlebih dahulu." };
   }, [deleteFamilyId, families, deleteFamily, addToast]);
 
-  const handleAddMember = useCallback(async (familyId, member) => {
-    const result = await addMember(familyId, member);
+  const handleAddMember = useCallback(async (familyId, member, options) => {
+    const result = await addMember(familyId, member, options);
     if (result?.success) {
-      addToast('Member added!', 'success');
+      const targetFamily = families.find((f) => f.id === familyId);
+      const isPersonal = isPersonalAccountEmail(
+        member.email,
+        member.memberType || member.member_type,
+        cockpitAccounts,
+        families,
+      );
+      if (isPersonal) {
+        void refetchHistory();
+        addToast(
+          `Akun ${normalizeEmail(member.email)} tercatat masuk ke ${targetFamily?.name || 'Family'}.`,
+          'success',
+        );
+      } else {
+        addToast('Member added!', 'success');
+      }
     } else {
       addToast(result?.error || 'Failed to add member', 'error');
     }
     return result;
-  }, [addMember, addToast]);
+  }, [addMember, families, cockpitAccounts, refetchHistory, addToast]);
 
   const handleRemoveMember = useCallback((familyId, memberId) => {
     const family = families.find((f) => f.id === familyId);
     const member = family?.members?.find((m) => m.id === memberId);
+    const isPersonal = Boolean(
+      member &&
+        isPersonalAccountEmail(
+          member.email,
+          member.memberType || member.member_type,
+          cockpitAccounts,
+          families,
+        ),
+    );
     setDeleteMemberData({
       familyId,
+      familyName: family?.name || family?.ownerEmail || 'Family',
       memberId,
-      memberName: member?.name?.trim() || member?.email || 'Member'
+      memberName: member?.name?.trim() || member?.email || 'Member',
+      memberEmail: member?.email || '',
+      isPersonal,
     });
-  }, [families]);
+  }, [families, cockpitAccounts]);
 
-  const confirmDeleteMember = useCallback(async () => {
+  const confirmDeleteMember = useCallback(async (options) => {
     if (deleteMemberData) {
-      const { familyId, memberId } = deleteMemberData;
-      const result = await removeMember(familyId, memberId);
+      const { familyId, familyName, memberId, memberEmail, isPersonal } = deleteMemberData;
+      const result = await removeMember(familyId, memberId, options);
       if (result?.success) {
         setDeleteMemberData(null);
-        addToast('Member removed!', 'success');
+        if (isPersonal) {
+          void refetchHistory();
+          if (options?.removalMode === 'local_correction') {
+            addToast('Data dikoreksi secara lokal tanpa mempengaruhi status cooldown.', 'info');
+          } else {
+            addToast(
+              `Akun ${normalizeEmail(memberEmail) || deleteMemberData.memberName} dikeluarkan dari ${familyName} dan riwayat tersimpan.`,
+              'success',
+            );
+          }
+        } else {
+          addToast('Member removed!', 'success');
+        }
       } else {
         addToast(result?.error || 'Failed to remove member', 'error');
       }
       return result;
     }
     return { success: false, error: "Pilih data terlebih dahulu." };
-  }, [deleteMemberData, removeMember, addToast]);
+  }, [deleteMemberData, removeMember, refetchHistory, addToast]);
+
+  const handleToggleFamilyPlanStatus = useCallback(async (family, nextStatus) => {
+    if (!setFamilyPlanStatus) return { success: false };
+    const result = await setFamilyPlanStatus(family.id, nextStatus, null);
+    const famLabel = family.name || family.ownerEmail || 'Family';
+    if (result?.success) {
+      if (nextStatus === 'downgraded_free') {
+        const impact = computeFamilyDowngradeImpact({
+          family,
+          cockpitAccounts,
+          historyEntries,
+          historyLoadError: historyError,
+        });
+        if (impact.totalPersonalAccounts === 0) {
+          addToast(
+            `${famLabel} ditandai PRO Hilang (FREE). Tidak ada akun pribadi yang terdampak.`,
+            'warning',
+          );
+        } else {
+          addToast(
+            `${famLabel} ditandai PRO Hilang (FREE). ${impact.safeToMove.length} akun pribadi aman dipindah, ${impact.cooldownLocked.length} akun sedang cooldown.`,
+            'warning',
+            7000,
+          );
+        }
+      } else {
+        addToast(`${famLabel} dipulihkan menjadi PRO Aktif.`, 'success');
+      }
+    } else {
+      addToast(result?.error || 'Gagal mengubah status Family. Periksa koneksi dan coba lagi.', 'error');
+    }
+    return result;
+  }, [setFamilyPlanStatus, cockpitAccounts, historyEntries, historyError, addToast]);
 
   const handleUpdateMember = useCallback(async (familyId, memberId, updatedFields) => {
     const result = await updateMember(familyId, memberId, updatedFields);
@@ -893,6 +991,17 @@ export default function Dashboard({ onLogout }) {
           onConnectDrive={handleConnectDrive}
           onSyncDrive={handleSyncDrive}
           onDisconnectDrive={handleDisconnectDrive}
+          cockpitAccounts={cockpitAccounts}
+          historyEntries={historyEntries}
+          cooldownByEmail={cooldownByEmail}
+          historyLoading={historyLoading}
+          historyError={historyError}
+          onRetryHistory={() => void refetchHistory()}
+          onOpenHistory={(email) => setHistoryDrawerEmail(email)}
+          onTogglePlanStatus={handleToggleFamilyPlanStatus}
+          onMigrateAccount={(email) =>
+            navigate(`/cockpit?migrateEmail=${encodeURIComponent(email)}`)
+          }
         />
       </main>
 
@@ -927,6 +1036,12 @@ export default function Dashboard({ onLogout }) {
           onClose={() => setAddMemberFamilyId(null)}
           onAdd={handleAddMember}
           familyId={addMemberFamilyId}
+          targetFamily={families.find((f) => f.id === addMemberFamilyId) || null}
+          families={families}
+          cockpitAccounts={cockpitAccounts}
+          historyEntries={historyEntries}
+          historyError={historyError}
+          onRetryHistory={() => void refetchHistory()}
         />
 
         <EditMemberModal
@@ -950,6 +1065,32 @@ export default function Dashboard({ onLogout }) {
           onClose={() => setDeleteMemberData(null)}
           onConfirm={confirmDeleteMember}
           memberName={deleteMemberData?.memberName || 'Member'}
+          memberEmail={deleteMemberData?.memberEmail || ''}
+          familyName={deleteMemberData?.familyName || ''}
+          isPersonal={Boolean(deleteMemberData?.isPersonal)}
+          cooldownSummary={
+            deleteMemberData?.isPersonal && deleteMemberData?.memberEmail
+              ? cooldownByEmail.get(normalizeEmail(deleteMemberData.memberEmail)) || null
+              : null
+          }
+          historyError={historyError}
+          onRetryHistory={() => void refetchHistory()}
+        />
+
+        <AccountFamilyHistoryDrawer
+          isOpen={Boolean(historyDrawerEmail)}
+          isDark={theme !== 'light'}
+          accountEmail={historyDrawerEmail}
+          families={families}
+          historyEntries={historyEntries}
+          historyLoading={historyLoading}
+          historyError={historyError}
+          onRetryHistory={() => void refetchHistory()}
+          onClose={() => setHistoryDrawerEmail(null)}
+          onAddManual={addManualHistory}
+          onUpdateEntry={updateHistory}
+          onDeleteEntry={deleteHistory}
+          onFeedback={(msg, type = 'success') => addToast(msg, type)}
         />
 
         {showTutorial && <TutorialModal onClose={handleTutorialClose} />}

@@ -20,6 +20,7 @@ export interface Member {
 }
 
 export type ProductType = 'slot' | 'account_ready' | 'account_custom';
+export type FamilyPlanStatus = 'pro_active' | 'downgraded_free';
 
 /** A family plan with owner credentials and member list. */
 export interface Family {
@@ -51,6 +52,12 @@ export interface Family {
   isBanned?: boolean;
   isPublic?: boolean;
   isActive?: boolean;
+  plan_status?: FamilyPlanStatus;
+  planStatus?: FamilyPlanStatus;
+  downgraded_at?: string | null;
+  downgradedAt?: string | null;
+  downgrade_note?: string | null;
+  downgradeNote?: string | null;
   members?: Member[]; // Optional members array from join
 }
 
@@ -103,6 +110,18 @@ export interface ExpiryStatus {
 
 // ─── Hook Return Types ───────────────────────────────────────────
 
+export interface AddMemberOptions {
+  overrideReasonType?: OverrideReasonType | null;
+  overrideNote?: string | null;
+}
+
+export interface RemoveMemberOptions {
+  removalMode?: RemovalMode;
+  leaveReason?: HistoryLeaveReason | null;
+  overrideReasonType?: OverrideReasonType | null;
+  overrideNote?: string | null;
+}
+
 export interface UseSupabaseDataReturn {
   families: Family[];
   loading: boolean;
@@ -111,10 +130,23 @@ export interface UseSupabaseDataReturn {
   addFamily: (family: FamilyInput) => Promise<ActionResult>;
   updateFamily: (family: FamilyInput) => Promise<ActionResult>;
   deleteFamily: (familyId: string) => Promise<ActionResult>;
-  addMember: (familyId: string, member: Omit<Member, 'family_id'>) => Promise<ActionResult>;
+  addMember: (
+    familyId: string,
+    member: Omit<Member, 'family_id'>,
+    options?: AddMemberOptions,
+  ) => Promise<ActionResult>;
   updateMember: (familyId: string, memberId: string, updatedFields: Partial<Member>) => Promise<ActionResult>;
-  removeMember: (familyId: string, memberId: string) => Promise<ActionResult>;
+  removeMember: (
+    familyId: string,
+    memberId: string,
+    options?: RemoveMemberOptions,
+  ) => Promise<ActionResult>;
   cancelSale: (familyId: string) => Promise<ActionResult>;
+  setFamilyPlanStatus: (
+    familyId: string,
+    planStatus: FamilyPlanStatus,
+    downgradeNote?: string | null,
+  ) => Promise<ActionResult>;
   refetch: () => Promise<void>;
 }
 
@@ -313,6 +345,10 @@ export interface CockpitAccountView {
   isFreeCandidate: boolean;
   isNearExpiryWithQuota: boolean;
   highestQuotaPct: number | null;
+  isInDowngradedFamily: boolean;
+  downgradedFamilyName: string | null;
+  downgradedFamilyId: string | null;
+  cooldown: AccountCooldownSummary;
 }
 
 export interface RecommendedFamily {
@@ -333,5 +369,114 @@ export interface CockpitAssignResult {
   family_id: string;
   email: string;
   added_at: string;
+  history_id?: string | null;
+}
+
+// ─── Google Family 12-Month Cooldown Guard Types ─────────────────
+
+export type HistorySource = 'auto_assign' | 'auto_admin' | 'auto_seed' | 'manual';
+export type HistoryLeaveReason =
+  | 'still_active'
+  | 'family_downgraded_free'
+  | 'family_expired'
+  | 'manual_move'
+  | 'local_correction'
+  | 'other';
+export type OverrideReasonType = 'local_correction' | 'family_downgraded_free' | 'emergency_other';
+export type RemovalMode = 'google_leave' | 'local_correction';
+
+export type CooldownStatus =
+  | 'never_joined'
+  | 'safe_first_family'
+  | 'ready_last_switch'
+  | 'cooldown_active';
+
+export type CooldownWarningLevel =
+  | 'none'
+  | 'caution_last_switch'
+  | 'critical_cooldown_locked'
+  | 'fail_safe_unverified';
+
+export interface AccountFamilyHistoryEntry {
+  id: string;
+  userId?: string;
+  accountEmail: string;
+  familyId: string | null;
+  familyNameSnapshot: string;
+  familyOwnerEmailSnapshot: string | null;
+  memberId: string | null;
+  joinedAt: string;
+  leftAt: string | null;
+  source: HistorySource;
+  leaveReason: HistoryLeaveReason | null;
+  countsForCooldown: boolean;
+  overrideReasonType: OverrideReasonType | null;
+  overrideNote: string | null;
+  notes: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface ManualHistoryInput {
+  accountEmail: string;
+  familyId?: string | null;
+  familyNameSnapshot: string;
+  familyOwnerEmailSnapshot?: string | null;
+  joinedAt: string;
+  leftAt?: string | null;
+  leaveReason?: HistoryLeaveReason | null;
+  countsForCooldown?: boolean;
+  notes?: string | null;
+}
+
+export interface AnnotatedHistoryEntry extends AccountFamilyHistoryEntry {
+  isSwitchEvent: boolean;
+  sequenceNumber: number | null;
+}
+
+export interface AccountCooldownSummary {
+  email: string;
+  status: CooldownStatus;
+  switchesInLast12m: number;
+  cooldownEndsAt: string | null;
+  cooldownDaysRemaining: number | null;
+  isUnlockingSoon: boolean;
+  firstFamilyName: string | null;
+  firstJoinedAt: string | null;
+  currentFamilyId: string | null;
+  currentFamilyName: string | null;
+  currentJoinedAt: string | null;
+  lastSwitchDate: string | null;
+  lastSwitchFromFamily: string | null;
+  lastSwitchToFamily: string | null;
+  entries: AnnotatedHistoryEntry[];
+}
+
+export interface CooldownWarningEvaluation {
+  level: CooldownWarningLevel;
+  title: string;
+  summaryLine: string | null;
+  message: string;
+  isSameFamilyRejoin: boolean;
+  requiresExplicitOverride: boolean;
+  cooldownEndsLabel: string | null;
+  cooldownDaysRemaining: number | null;
+}
+
+export interface DowngradeAffectedAccount {
+  email: string;
+  memberId: string | null;
+  memberName: string;
+  cockpitAccountId: string | null;
+  cooldown: AccountCooldownSummary;
+}
+
+export interface FamilyDowngradeImpact {
+  familyId: string;
+  familyName: string;
+  totalPersonalAccounts: number;
+  safeToMove: DowngradeAffectedAccount[];
+  cooldownLocked: DowngradeAffectedAccount[];
+  unverified: DowngradeAffectedAccount[];
 }
 

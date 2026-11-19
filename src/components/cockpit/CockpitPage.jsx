@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   ChevronLeft,
   Upload,
@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   ShieldAlert,
   Layers,
+  History,
 } from 'lucide-react';
 import { cn } from '../../utils';
 import { useTheme } from '../../context/ThemeContext';
@@ -22,19 +23,26 @@ import { useToast } from '../../hooks/useToast';
 import { useSupabaseData } from '../../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../../hooks/useConnectedAccounts';
 import { useCockpitAccounts } from '../../hooks/useCockpitAccounts';
+import { useAccountFamilyHistory } from '../../hooks/useAccountFamilyHistory';
 import {
   buildCockpitOverview,
   filterAndSortCockpitViews,
   getRecommendedFamiliesForAccount,
 } from '../../lib/cockpitLogic';
+import { normalizeEmail } from '../../lib/cockpitParser';
 import ToastContainer from '../ui/ToastContainer';
 import CockpitImportModal from './CockpitImportModal';
 import FamilyRecommendationDrawer from './FamilyRecommendationDrawer';
+import CooldownStatusBadge from '../cooldown/CooldownStatusBadge';
+import AccountFamilyHistoryDrawer from '../cooldown/AccountFamilyHistoryDrawer';
 
 const FILTER_OPTIONS = [
   { key: 'all', label: 'Semua' },
   { key: 'free_candidates', label: 'Belum Masuk Family' },
   { key: 'in_pro_family', label: 'Sudah PRO' },
+  { key: 'family_downgraded', label: 'Family Turun FREE' },
+  { key: 'cooldown_active', label: 'Cooldown Aktif' },
+  { key: 'safe_to_move', label: 'Aman Dipindah' },
   { key: 'conflicts', label: 'Konflik Family' },
   { key: 'no_argon', label: 'No Argon' },
   { key: 'need_verif', label: 'Need Verif' },
@@ -161,6 +169,7 @@ export default function CockpitPage() {
   const { theme, toggleTheme } = useTheme();
   const isDark = theme === 'dark';
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { toasts, addToast, removeToast } = useToast();
 
   const {
@@ -184,25 +193,66 @@ export default function CockpitPage() {
     deleteAccount,
     assignToFamily,
   } = useCockpitAccounts();
+  const {
+    entries: historyEntries,
+    loading: historyLoading,
+    error: historyError,
+    refetch: refetchHistory,
+    addManualHistory,
+    updateHistory,
+    deleteHistory,
+  } = useAccountFamilyHistory();
 
   const [filter, setFilter] = useState('all');
   const [sortBy, setSortBy] = useState('priority');
   const [searchQuery, setSearchQuery] = useState('');
   const [isImportOpen, setIsImportOpen] = useState(false);
-  const [recTargetAccount, setRecTargetAccount] = useState(null);
+  const [recTargetView, setRecTargetView] = useState(null);
+  const [historyDrawerEmail, setHistoryDrawerEmail] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
+  const migrateParamHandledRef = useRef(false);
 
   const isLoading = cockpitLoading || familiesLoading || driveLoading;
 
   const overview = useMemo(
-    () => buildCockpitOverview(cockpitAccounts, families, connectedAccounts),
-    [cockpitAccounts, families, connectedAccounts],
+    () =>
+      buildCockpitOverview(
+        cockpitAccounts,
+        families,
+        connectedAccounts,
+        Date.now(),
+        historyEntries,
+      ),
+    [cockpitAccounts, families, connectedAccounts, historyEntries],
   );
+
+  // Deep-link dari Dashboard Admin (Panel Dampak Family Turun FREE -> Cari Family PRO Pengganti)
+  useEffect(() => {
+    const migrateEmail = searchParams.get('migrateEmail');
+    if (!migrateEmail || isLoading || migrateParamHandledRef.current) return;
+    const normalized = normalizeEmail(migrateEmail);
+    const matched = overview.views.find((v) => normalizeEmail(v.account.email) === normalized);
+    migrateParamHandledRef.current = true;
+    if (matched) {
+      setRecTargetView(matched);
+    } else {
+      setSearchQuery(migrateEmail);
+    }
+    navigate('/cockpit', { replace: true });
+  }, [searchParams, isLoading, overview.views, navigate]);
 
   const visibleViews = useMemo(
     () => filterAndSortCockpitViews(overview.views, filter, sortBy, searchQuery),
     [overview.views, filter, sortBy, searchQuery],
+  );
+
+  const recTargetAccount = recTargetView?.account || null;
+  const recTargetCooldown = recTargetView?.cooldown || null;
+  const isRecLastSwitch = Boolean(
+    recTargetCooldown &&
+      (recTargetCooldown.status === 'safe_first_family' ||
+        recTargetCooldown.status === 'ready_last_switch'),
   );
 
   const recommendationsForTarget = useMemo(() => {
@@ -212,8 +262,9 @@ export default function CockpitPage() {
       cockpitAccounts,
       families,
       connectedAccounts,
+      { prioritizeStability: isRecLastSwitch },
     );
-  }, [recTargetAccount, cockpitAccounts, families, connectedAccounts]);
+  }, [recTargetAccount, cockpitAccounts, families, connectedAccounts, isRecLastSwitch]);
 
   const existingEmails = useMemo(
     () => cockpitAccounts.map((a) => a.email),
@@ -227,6 +278,9 @@ export default function CockpitPage() {
       in_pro_family: overview.views.filter(
         (v) => v.resolvedTier === 'PRO' && v.isArgonPriority,
       ).length,
+      family_downgraded: overview.metrics.downgradedAffectedCount,
+      cooldown_active: overview.metrics.cooldownLockedCount,
+      safe_to_move: overview.metrics.safeToMoveCount,
       conflicts: overview.metrics.conflictAccountsCount,
       no_argon: overview.metrics.noArgonCount,
       need_verif: overview.metrics.needVerifCount,
@@ -237,8 +291,13 @@ export default function CockpitPage() {
   );
 
   const handleRefreshAll = async () => {
-    await Promise.all([refetchCockpit(), refetchFamilies(), refetchDrive()]);
-    addToast('Data Cockpit, Family, dan Drive diperbarui.', 'info');
+    await Promise.all([
+      refetchCockpit(),
+      refetchFamilies(),
+      refetchDrive(),
+      refetchHistory(),
+    ]);
+    addToast('Data Cockpit, Family, Drive, dan Riwayat Cooldown diperbarui.', 'info');
   };
 
   const handleConfirmImport = async (sanitizedAccounts, clientSkippedCount) => {
@@ -301,10 +360,10 @@ export default function CockpitPage() {
     }
   };
 
-  const handleAssign = async (accountId, familyId, memberName, familyName) => {
-    const res = await assignToFamily(accountId, familyId, memberName, familyName);
+  const handleAssign = async (accountId, familyId, memberName, familyName, options) => {
+    const res = await assignToFamily(accountId, familyId, memberName, familyName, options);
     if (res.success) {
-      await Promise.all([refetchFamilies(), refetchCockpit()]);
+      await Promise.all([refetchFamilies(), refetchCockpit(), refetchHistory()]);
     }
     return res;
   };
@@ -500,12 +559,61 @@ export default function CockpitPage() {
           </div>
         )}
 
+        {/* Partial Error Banner: History failed to load (AC-02-03 Fail-Safe) */}
+        {!isLoading && historyError && (
+          <div
+            role="alert"
+            className={cn(
+              'flex flex-col sm:flex-row sm:items-center justify-between gap-2 border px-4 py-2.5 text-xs',
+              isDark
+                ? 'border-red-500/40 bg-red-950/35 text-red-200'
+                : 'border-red-700/35 bg-red-50 text-red-900',
+            )}
+          >
+            <span className="inline-flex items-center gap-2">
+              <ShieldAlert className="w-4 h-4 shrink-0" />
+              {historyError}
+            </span>
+            <button
+              type="button"
+              onClick={() => void refetchHistory()}
+              className="underline font-semibold self-start sm:self-auto cursor-pointer"
+            >
+              Muat Ulang Riwayat
+            </button>
+          </div>
+        )}
+
+        {/* US-09: Banner Pengingat H-14 Menjelang Bebas Cooldown */}
+        {!isLoading && !historyError && overview.metrics.unlockingSoonCount > 0 && (
+          <div
+            className={cn(
+              'flex flex-col sm:flex-row sm:items-center justify-between gap-2 border px-4 py-2.5 text-xs',
+              isDark
+                ? 'border-gold-500/40 bg-gold-500/10 text-gold-300'
+                : 'border-gold-700/35 bg-gold-300/25 text-stone-900',
+            )}
+          >
+            <span className="inline-flex items-center gap-2">
+              <Clock className="w-4 h-4 shrink-0" />
+              {overview.metrics.unlockingSoonCount} akun pribadi akan bebas dari cooldown 12 bulan dalam ≤ 14 hari lagi.
+            </span>
+            <button
+              type="button"
+              onClick={() => setFilter('cooldown_active')}
+              className="underline font-semibold self-start sm:self-auto cursor-pointer"
+            >
+              Lihat Daftar Cooldown
+            </button>
+          </div>
+        )}
+
         {/* Compact Summary Strip (Operate Ledger — not hero metric cards) */}
         {overview.metrics.totalAccounts > 0 && (
           <section
             aria-label="Ringkasan sebaran akun"
             className={cn(
-              'grid grid-cols-2 sm:grid-cols-5 border divide-y sm:divide-y-0 sm:divide-x',
+              'grid grid-cols-2 sm:grid-cols-6 border divide-y sm:divide-y-0 sm:divide-x',
               isDark
                 ? 'border-stone-800 divide-stone-800 bg-stone-900/60'
                 : 'border-stone-200 divide-stone-200 bg-paper',
@@ -527,7 +635,7 @@ export default function CockpitPage() {
               type="button"
               onClick={() => setFilter('free_candidates')}
               className={cn(
-                'px-4 py-3 text-left transition-colors',
+                'px-4 py-3 text-left transition-colors cursor-pointer',
                 isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
               )}
             >
@@ -539,7 +647,69 @@ export default function CockpitPage() {
                   {overview.metrics.freeCandidatesCount}
                 </span>
                 <span className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-500')}>
-                  siap masuk PRO
+                  siap PRO
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilter('cooldown_active')}
+              className={cn(
+                'px-4 py-3 text-left transition-colors cursor-pointer',
+                isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
+              )}
+            >
+              <div className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-600')}>
+                Terkunci Cooldown
+              </div>
+              <div className="mt-1 flex items-baseline gap-2 tabular-nums">
+                <span
+                  className={cn(
+                    'text-xl font-bold',
+                    overview.metrics.cooldownLockedCount > 0
+                      ? isDark
+                        ? 'text-red-400'
+                        : 'text-red-700'
+                      : isDark
+                        ? 'text-emerald-400'
+                        : 'text-emerald-700',
+                  )}
+                >
+                  {historyError ? '—' : overview.metrics.cooldownLockedCount}
+                </span>
+                <span className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-500')}>
+                  0x pindah
+                </span>
+              </div>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setFilter('family_downgraded')}
+              className={cn(
+                'px-4 py-3 text-left transition-colors cursor-pointer',
+                isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
+              )}
+            >
+              <div className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-600')}>
+                Family Turun FREE
+              </div>
+              <div className="mt-1 flex items-baseline gap-2 tabular-nums">
+                <span
+                  className={cn(
+                    'text-xl font-bold',
+                    overview.metrics.downgradedAffectedCount > 0
+                      ? isDark
+                        ? 'text-amber-300'
+                        : 'text-amber-800'
+                      : '',
+                  )}
+                >
+                  {overview.metrics.downgradedAffectedCount}
+                </span>
+                <span className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-500')}>
+                  butuh migrasi
                 </span>
               </div>
             </button>
@@ -548,12 +718,12 @@ export default function CockpitPage() {
               type="button"
               onClick={() => setFilter('conflicts')}
               className={cn(
-                'px-4 py-3 text-left transition-colors',
+                'px-4 py-3 text-left transition-colors cursor-pointer',
                 isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
               )}
             >
               <div className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-600')}>
-                Konflik Family Ganda
+                Konflik Ganda
               </div>
               <div className="mt-1 flex items-baseline gap-2 tabular-nums">
                 <span
@@ -578,35 +748,21 @@ export default function CockpitPage() {
 
             <button
               type="button"
-              onClick={() => setFilter('need_verif')}
-              className={cn(
-                'px-4 py-3 text-left transition-colors',
-                isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
-              )}
-            >
-              <div className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-600')}>
-                Need Verif
-              </div>
-              <div className="mt-1 text-xl font-bold tabular-nums">
-                {overview.metrics.needVerifCount}
-              </div>
-            </button>
-
-            <button
-              type="button"
               onClick={() => setFilter('banned')}
               className={cn(
-                'px-4 py-3 text-left transition-colors col-span-2 sm:col-span-1',
+                'px-4 py-3 text-left transition-colors cursor-pointer',
                 isDark ? 'hover:bg-stone-800/60' : 'hover:bg-stone-100/80',
               )}
             >
               <div className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-600')}>
-                Kena Ban
+                Need Verif / Ban
               </div>
               <div className="mt-1 flex items-baseline justify-between gap-2 tabular-nums">
-                <span className="text-xl font-bold">{overview.metrics.bannedCount}</span>
+                <span className="text-xl font-bold">
+                  {overview.metrics.needVerifCount}/{overview.metrics.bannedCount}
+                </span>
                 <span className={cn('text-[11px]', isDark ? 'text-stone-500' : 'text-stone-500')}>
-                  Sync: {formatSyncTime(overview.metrics.latestSyncedAt)}
+                  {formatSyncTime(overview.metrics.latestSyncedAt)}
                 </span>
               </div>
             </button>
@@ -789,20 +945,24 @@ export default function CockpitPage() {
               )}
             >
               <p className="text-sm font-medium">
-                Tidak ada akun yang cocok dengan filter atau pencarian ini.
+                {filter === 'cooldown_active' && !searchQuery.trim()
+                  ? 'Tidak ada akun pribadi yang sedang cooldown 12 bulan. Semua jatah pindah aman.'
+                  : 'Tidak ada akun yang cocok dengan filter atau pencarian ini.'}
               </p>
               <button
                 type="button"
                 onClick={resetFilters}
                 className={cn(
-                  'inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border transition-colors',
+                  'inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold border transition-colors cursor-pointer',
                   isDark
                     ? 'border-stone-700 text-stone-200 hover:bg-stone-800'
                     : 'border-stone-300 text-stone-800 hover:bg-stone-200',
                 )}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                Reset Filter
+                {filter === 'cooldown_active' && !searchQuery.trim()
+                  ? 'Tampilkan Semua Akun'
+                  : 'Reset Filter'}
               </button>
             </div>
           ) : (
@@ -827,6 +987,7 @@ export default function CockpitPage() {
                     <th className="py-3 px-4">Kuota Argon</th>
                     <th className="py-3 px-4">Paket</th>
                     <th className="py-3 px-4">Posisi Family</th>
+                    <th className="py-3 px-4">Status Pindah</th>
                     <th className="py-3 px-4 text-right">Aksi</th>
                   </tr>
                 </thead>
@@ -1019,6 +1180,11 @@ export default function CockpitPage() {
                                   </span>
                                 )}
                               </div>
+                              {view.isInDowngradedFamily && (
+                                <p className={cn('text-[11px] font-semibold', isDark ? 'text-red-300' : 'text-red-700')}>
+                                  FREE (Family Turun Paket)
+                                </p>
+                              )}
                             </div>
                           ) : (
                             <span className={cn('text-xs', isDark ? 'text-stone-500' : 'text-stone-500')}>
@@ -1027,24 +1193,59 @@ export default function CockpitPage() {
                           )}
                         </td>
 
+                        {/* Status Pindah / Cooldown 12 Bulan (US-02, US-04) */}
+                        <td className="py-3.5 px-4 whitespace-nowrap">
+                          <CooldownStatusBadge
+                            summary={view.cooldown}
+                            isDark={isDark}
+                            loading={historyLoading}
+                            error={historyError}
+                            onClick={() => setHistoryDrawerEmail(account.email)}
+                            onRetry={() => void refetchHistory()}
+                          />
+                        </td>
+
                         {/* Aksi */}
                         <td className="py-3.5 px-4 whitespace-nowrap text-right">
                           <div className="inline-flex items-center justify-end gap-2">
-                            {isFreeCandidate && (
+                            {(isFreeCandidate || view.isInDowngradedFamily) && (
                               <button
                                 type="button"
-                                onClick={() => setRecTargetAccount(account)}
+                                onClick={() => setRecTargetView(view)}
                                 className={cn(
-                                  'inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold transition-colors',
-                                  isDark
-                                    ? 'bg-stone-100 text-stone-950 hover:bg-stone-200'
-                                    : 'bg-stone-900 text-stone-50 hover:bg-stone-800',
+                                  'inline-flex items-center gap-1 px-3 py-1.5 text-xs font-semibold transition-colors cursor-pointer',
+                                  view.isInDowngradedFamily && view.cooldown.status === 'cooldown_active'
+                                    ? isDark
+                                      ? 'border border-red-500/45 bg-red-950/40 text-red-200 hover:bg-red-950/70'
+                                      : 'border border-red-700/40 bg-red-50 text-red-900 hover:bg-red-100'
+                                    : isDark
+                                      ? 'bg-stone-100 text-stone-950 hover:bg-stone-200'
+                                      : 'bg-stone-900 text-stone-50 hover:bg-stone-800',
                                 )}
                               >
-                                Cari Family PRO
+                                {view.isInDowngradedFamily
+                                  ? view.cooldown.status === 'cooldown_active'
+                                    ? 'Terkunci · Lihat Opsi'
+                                    : 'Pindah ke Family PRO'
+                                  : 'Cari Family PRO'}
                                 <ArrowUpRight className="w-3.5 h-3.5" />
                               </button>
                             )}
+
+                            <button
+                              type="button"
+                              onClick={() => setHistoryDrawerEmail(account.email)}
+                              aria-label={`Lihat riwayat Family untuk ${account.email}`}
+                              title="Lihat & catat riwayat Family"
+                              className={cn(
+                                'p-1.5 transition-colors cursor-pointer',
+                                isDark
+                                  ? 'text-stone-400 hover:text-gold-400 hover:bg-stone-800'
+                                  : 'text-stone-500 hover:text-gold-700 hover:bg-stone-100',
+                              )}
+                            >
+                              <History className="w-4 h-4" />
+                            </button>
 
                             {!isFreeCandidate && resolvedTier === 'PRO' && !hasConflict && isArgonPriority && (
                               <span
@@ -1136,13 +1337,34 @@ export default function CockpitPage() {
         isOpen={Boolean(recTargetAccount)}
         isDark={isDark}
         targetAccount={recTargetAccount}
+        cooldownSummary={recTargetCooldown}
+        historyError={historyError}
+        onRetryHistory={() => void refetchHistory()}
+        leavePreviousFamilyId={recTargetView?.isInDowngradedFamily ? recTargetView.downgradedFamilyId : null}
+        leavePreviousFamilyName={recTargetView?.isInDowngradedFamily ? recTargetView.downgradedFamilyName : null}
         recommendations={recommendationsForTarget}
-        onClose={() => setRecTargetAccount(null)}
+        onClose={() => setRecTargetView(null)}
         onAssign={handleAssign}
         onAssignSuccess={(email, famName) => {
-          addToast(`${email} berhasil dicatat masuk ke ${famName}.`, 'success');
+          addToast(`Akun ${email} tercatat masuk ke ${famName}.`, 'success');
         }}
         onCopyFeedback={(msg, type = 'success') => addToast(msg, type)}
+      />
+
+      <AccountFamilyHistoryDrawer
+        isOpen={Boolean(historyDrawerEmail)}
+        isDark={isDark}
+        accountEmail={historyDrawerEmail}
+        families={families}
+        historyEntries={historyEntries}
+        historyLoading={historyLoading}
+        historyError={historyError}
+        onRetryHistory={() => void refetchHistory()}
+        onClose={() => setHistoryDrawerEmail(null)}
+        onAddManual={addManualHistory}
+        onUpdateEntry={updateHistory}
+        onDeleteEntry={deleteHistory}
+        onFeedback={(msg, type = 'success') => addToast(msg, type)}
       />
 
       <ToastContainer toasts={toasts} removeToast={removeToast} />

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   X,
   Copy,
@@ -11,10 +11,21 @@ import {
   AlertCircle,
   CheckCircle2,
   ShieldAlert,
+  Clock,
 } from 'lucide-react';
 import { cn } from '../../utils';
 import { MAX_FAMILY_SLOTS } from '../../lib/familyUtils';
 import { revealFamilyPassword } from '../../lib/api';
+import { evaluateCooldownActionWarning } from '../../lib/cooldownLogic';
+import CooldownGuardNotice, {
+  validateCooldownGuardState,
+} from '../cooldown/CooldownGuardNotice';
+
+const INITIAL_GUARD_STATE = {
+  overrideReasonType: '',
+  overrideNote: '',
+  overrideConfirmed: false,
+};
 
 function defaultMemberName(email) {
   if (!email) return '';
@@ -26,6 +37,11 @@ export default function FamilyRecommendationDrawer({
   isOpen,
   isDark,
   targetAccount,
+  cooldownSummary = null,
+  historyError = null,
+  onRetryHistory,
+  leavePreviousFamilyId = null,
+  leavePreviousFamilyName = null,
   recommendations,
   onClose,
   onAssignSuccess,
@@ -40,6 +56,8 @@ export default function FamilyRecommendationDrawer({
   const [passwordError, setPasswordError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [guardState, setGuardState] = useState(INITIAL_GUARD_STATE);
+  const [guardError, setGuardError] = useState('');
 
   useEffect(() => {
     if (!isOpen || !targetAccount) return;
@@ -49,12 +67,16 @@ export default function FamilyRecommendationDrawer({
     setRevealedPassword(null);
     setPasswordError('');
     setSubmitError('');
+    setGuardState(INITIAL_GUARD_STATE);
+    setGuardError('');
   }, [isOpen, targetAccount, recommendations]);
 
   useEffect(() => {
     setRevealedPassword(null);
     setPasswordError('');
     setSubmitError('');
+    setGuardState(INITIAL_GUARD_STATE);
+    setGuardError('');
   }, [selectedFamilyId]);
 
   useEffect(() => {
@@ -66,9 +88,41 @@ export default function FamilyRecommendationDrawer({
     return () => window.removeEventListener('keydown', onKeyDown);
   }, [isOpen, submitting, onClose]);
 
-  if (!isOpen || !targetAccount) return null;
-
   const selectedRec = recommendations.find((r) => r.family.id === selectedFamilyId) || null;
+  const isLastSwitchCandidate = Boolean(
+    cooldownSummary &&
+      (cooldownSummary.status === 'safe_first_family' ||
+        cooldownSummary.status === 'ready_last_switch'),
+  );
+
+  const warningEvaluation = useMemo(() => {
+    if (!targetAccount || !selectedRec) return null;
+    return evaluateCooldownActionWarning({
+      summary: cooldownSummary,
+      action: leavePreviousFamilyId ? 'move' : 'join',
+      targetFamily: {
+        id: selectedRec.family.id,
+        name: selectedRec.family.name || selectedRec.family.ownerEmail,
+        ownerEmail: selectedRec.family.ownerEmail,
+      },
+      currentFamilyName: leavePreviousFamilyName,
+      historyLoadError: historyError,
+    });
+  }, [
+    targetAccount,
+    selectedRec,
+    cooldownSummary,
+    leavePreviousFamilyId,
+    leavePreviousFamilyName,
+    historyError,
+  ]);
+
+  const guardCheck = useMemo(
+    () => validateCooldownGuardState(warningEvaluation, guardState, false),
+    [warningEvaluation, guardState],
+  );
+
+  if (!isOpen || !targetAccount) return null;
 
   const copyText = async (key, text, label) => {
     if (!text) return;
@@ -110,14 +164,33 @@ export default function FamilyRecommendationDrawer({
       return;
     }
 
+    if (warningEvaluation) {
+      const check = validateCooldownGuardState(warningEvaluation, guardState, false);
+      if (!check.canProceed) {
+        setGuardError(check.error);
+        return;
+      }
+    }
+
     setSubmitting(true);
     setSubmitError('');
+    setGuardError('');
     try {
+      const isCritical = warningEvaluation?.level === 'critical_cooldown_locked';
       const res = await onAssign(
         targetAccount.id,
         selectedRec.family.id,
         trimmed,
         selectedRec.family.name,
+        {
+          leavePreviousFamilyId: leavePreviousFamilyId || null,
+          overrideReasonType: isCritical
+            ? guardState.overrideReasonType || null
+            : leavePreviousFamilyId
+              ? 'family_downgraded_free'
+              : null,
+          overrideNote: isCritical ? guardState.overrideNote?.trim() || null : null,
+        },
       );
       if (res.success) {
         onAssignSuccess?.(targetAccount.email, selectedRec.family.name);
@@ -192,12 +265,28 @@ export default function FamilyRecommendationDrawer({
                 Belum ada Family PRO yang memenuhi syarat
               </p>
               <p className={cn('text-xs leading-relaxed max-w-sm mx-auto', isDark ? 'text-stone-400' : 'text-stone-600')}>
-                Belum ada Family PRO yang memenuhi syarat (slot kosong, belum kedaluwarsa, dan bebas akun pribadi lain).
-                Tambahkan Family baru atau kosongkan slot pada Family yang belum ditempati akun pribadi Anda.
+                Belum ada Family PRO aktif yang aman untuk ditempati saat ini. Jangan keluarkan akun dulu agar jatah pindah 12 bulan tidak terbuang.
               </p>
             </div>
           ) : (
             <>
+              {/* US-07: Banner konteks jatah pindah terakhir */}
+              {isLastSwitchCandidate && (
+                <div
+                  className={cn(
+                    'border px-3.5 py-2.5 text-xs leading-relaxed flex items-start gap-2',
+                    isDark
+                      ? 'border-amber-500/40 bg-amber-950/30 text-amber-100'
+                      : 'border-amber-700/35 bg-amber-50 text-amber-950',
+                  )}
+                >
+                  <Clock className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>
+                    Jatah pindah terakhir dalam 12 bulan — disarankan pilih Family dengan masa aktif paling panjang &amp; storage lega.
+                  </span>
+                </div>
+              )}
+
               {/* Step 1: Pilih Family */}
               <div className="space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -205,7 +294,7 @@ export default function FamilyRecommendationDrawer({
                     1. Pilih Family PRO Bebas Konflik ({recommendations.length})
                   </h3>
                   <span className={cn('text-xs', isDark ? 'text-stone-400' : 'text-stone-500')}>
-                    Urut sisa Drive terbesar
+                    {isLastSwitchCandidate ? 'Urut paling stabil' : 'Urut sisa Drive terbesar'}
                   </span>
                 </div>
 
@@ -215,15 +304,16 @@ export default function FamilyRecommendationDrawer({
                     isDark ? 'border-stone-800 divide-stone-800 bg-stone-950/40' : 'border-stone-200 divide-stone-200 bg-white',
                   )}
                 >
-                  {recommendations.map((rec) => {
+                  {recommendations.map((rec, idx) => {
                     const isSelected = rec.family.id === selectedFamilyId;
+                    const showTopStableBadge = isLastSwitchCandidate && idx === 0;
                     return (
                       <button
                         key={rec.family.id}
                         type="button"
                         onClick={() => setSelectedFamilyId(rec.family.id)}
                         className={cn(
-                          'w-full text-left px-4 py-3 transition-colors duration-150 flex items-start justify-between gap-3',
+                          'w-full text-left px-4 py-3 transition-colors duration-150 flex items-start justify-between gap-3 cursor-pointer',
                           isSelected
                             ? isDark
                               ? 'bg-gold-500/12 text-stone-50'
@@ -238,6 +328,18 @@ export default function FamilyRecommendationDrawer({
                             <span className="font-semibold text-sm truncate">
                               {rec.family.name || rec.family.ownerEmail}
                             </span>
+                            {showTopStableBadge && (
+                              <span
+                                className={cn(
+                                  'inline-flex items-center px-1.5 py-0.5 text-[11px] font-semibold border',
+                                  isDark
+                                    ? 'border-gold-400/50 bg-gold-500/15 text-gold-300'
+                                    : 'border-gold-700/40 bg-gold-300/30 text-gold-700',
+                                )}
+                              >
+                                Paling Stabil
+                              </span>
+                            )}
                             {rec.isStorageLega && (
                               <span
                                 className={cn(
@@ -450,6 +552,39 @@ export default function FamilyRecommendationDrawer({
                     />
                   </div>
 
+                  {/* AC-07-02: Catatan kehati-hatian bila pilih Family dengan masa aktif singkat saat jatah terakhir */}
+                  {isLastSwitchCandidate &&
+                    selectedRec.daysRemaining !== null &&
+                    selectedRec.daysRemaining <= 30 && (
+                      <p
+                        className={cn(
+                          'border px-3 py-2 text-xs',
+                          isDark
+                            ? 'border-amber-500/35 bg-amber-950/25 text-amber-200'
+                            : 'border-amber-700/30 bg-amber-50 text-amber-900',
+                        )}
+                      >
+                        Masa aktif sisa {selectedRec.daysRemaining} hari — pastikan Family ini stabil sebelum memakai jatah pindah terakhir.
+                      </p>
+                    )}
+
+                  {/* US-03: Peringatan Cooldown Bertingkat sebelum Catat Masuk */}
+                  {warningEvaluation &&
+                    (warningEvaluation.level !== 'none' || warningEvaluation.isSameFamilyRejoin) && (
+                      <CooldownGuardNotice
+                        evaluation={warningEvaluation}
+                        isDark={isDark}
+                        guardState={guardState}
+                        onChangeGuardState={(next) => {
+                          setGuardState(next);
+                          setGuardError('');
+                        }}
+                        onRetryHistory={onRetryHistory}
+                        allowLocalCorrection={false}
+                        validationError={guardError}
+                      />
+                    )}
+
                   {submitError && (
                     <div
                       role="alert"
@@ -482,7 +617,7 @@ export default function FamilyRecommendationDrawer({
             onClick={onClose}
             disabled={submitting}
             className={cn(
-              'px-4 py-2 text-xs font-semibold border transition-colors disabled:opacity-50',
+              'px-4 py-2 text-xs font-semibold border transition-colors disabled:opacity-50 cursor-pointer',
               isDark
                 ? 'border-stone-700 text-stone-300 hover:bg-stone-800'
                 : 'border-stone-300 text-stone-700 hover:bg-stone-200',
@@ -494,16 +629,24 @@ export default function FamilyRecommendationDrawer({
             <button
               type="button"
               onClick={handleConfirmAssign}
-              disabled={submitting}
+              disabled={submitting || !guardCheck.canProceed}
               className={cn(
-                'inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold transition-colors disabled:opacity-40',
-                isDark
-                  ? 'bg-stone-50 text-stone-900 hover:bg-stone-200'
-                  : 'bg-stone-900 text-stone-50 hover:bg-stone-800',
+                'inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer',
+                warningEvaluation?.level === 'critical_cooldown_locked'
+                  ? 'bg-red-700 text-white hover:bg-red-800'
+                  : isDark
+                    ? 'bg-stone-50 text-stone-900 hover:bg-stone-200'
+                    : 'bg-stone-900 text-stone-50 hover:bg-stone-800',
               )}
             >
               <CheckCircle2 className="w-3.5 h-3.5" />
-              {submitting ? 'Mencatat…' : 'Catat Sudah Masuk Family'}
+              {submitting
+                ? 'Mencatat…'
+                : warningEvaluation?.level === 'critical_cooldown_locked'
+                  ? 'Tetap Catat / Override'
+                  : leavePreviousFamilyId
+                    ? 'Catat Sudah Pindah'
+                    : 'Catat Sudah Masuk Family'}
             </button>
           )}
         </div>

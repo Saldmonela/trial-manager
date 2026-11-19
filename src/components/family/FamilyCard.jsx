@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Plus, Users, X, Lock, Crown, Pencil, Trash2,
   AlertTriangle, Calendar, ChevronDown, ShieldCheck, Mail, RotateCcw,
-  Cloud, RefreshCw, Unplug
+  Cloud, RefreshCw, Unplug, ShieldAlert, ArrowUpRight
 } from 'lucide-react';
 import { revealFamilyPassword } from '../../lib/api';
 import { cn, formatBytes } from '../../utils';
@@ -12,8 +12,15 @@ import {
   getSlotsUsed, getSlotsAvailable,
   isFamilyFull, getDaysRemaining, getExpiryStatus,
   getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning, isFamilyValidStorage,
-  findOwnerJoinedAsMemberFamily
+  findOwnerJoinedAsMemberFamily, isFamilyDowngraded
 } from '../../lib/familyUtils';
+import {
+  computeFamilyDowngradeImpact,
+  formatDateId,
+  isPersonalAccountEmail,
+} from '../../lib/cooldownLogic';
+import { normalizeEmail } from '../../lib/cockpitParser';
+import CooldownStatusBadge from '../cooldown/CooldownStatusBadge';
 import { useTheme } from '../../context/ThemeContext';
 
 import { useLanguage } from '../../context/LanguageContext';
@@ -70,8 +77,36 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
  *   onDisconnectDrive?: (id: string) => void,
  * }} props
  */
-function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
+function FamilyCard({
+  family,
+  allFamilies = [],
+  onDelete,
+  onEdit,
+  onAddMember,
+  onRemoveMember,
+  onEditMember,
+  onCancelSale,
+  readOnly = false,
+  onRequest,
+  isHighlighted = false,
+  forceExpand = false,
+  highlightedEmail = null,
+  connectedAccounts = [],
+  onConnectDrive,
+  onSyncDrive,
+  onDisconnectDrive,
+  cockpitAccounts = [],
+  historyEntries = [],
+  cooldownByEmail = null,
+  historyLoading = false,
+  historyError = null,
+  onRetryHistory,
+  onOpenHistory,
+  onTogglePlanStatus,
+  onMigrateAccount,
+}) {
   const { theme } = useTheme();
+  const isDark = theme !== 'light';
   const { t, language } = useLanguage();
   const [showEmail, setShowEmail] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -79,6 +114,7 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
   const [passwordError, setPasswordError] = useState("");
   const [passwordBusy, setPasswordBusy] = useState(false);
   const [driveBusy, setDriveBusy] = useState(false);
+  const [planBusy, setPlanBusy] = useState(false);
 
   // Map email -> akun Drive terhubung; dipakai untuk owner & member (case-insensitive).
   // Hanya untuk tampilan admin (publik tidak menerima connectedAccounts).
@@ -200,10 +236,36 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
     return findOwnerJoinedAsMemberFamily(family, allFamilies);
   }, [readOnly, family, allFamilies]);
 
+  const isDowngraded = useMemo(
+    () => !readOnly && isFamilyDowngraded(family),
+    [readOnly, family],
+  );
+
+  const downgradeImpact = useMemo(() => {
+    if (readOnly || (!isDowngraded && !lowStorageTier)) return null;
+    return computeFamilyDowngradeImpact({
+      family,
+      cockpitAccounts,
+      historyEntries,
+      historyLoadError: historyError,
+    });
+  }, [readOnly, isDowngraded, lowStorageTier, family, cockpitAccounts, historyEntries, historyError]);
+
+  const handleToggleDowngrade = async () => {
+    if (!onTogglePlanStatus || planBusy) return;
+    setPlanBusy(true);
+    try {
+      const nextStatus = isDowngraded ? 'pro_active' : 'downgraded_free';
+      await onTogglePlanStatus(family, nextStatus);
+    } finally {
+      setPlanBusy(false);
+    }
+  };
+
   const isExpiredWithValidStorage = useMemo(() => {
-    if (readOnly || lowStorageTier || ownerJoinedHostFamily) return false;
+    if (readOnly || lowStorageTier || ownerJoinedHostFamily || isDowngraded) return false;
     return daysRemaining !== null && daysRemaining < 0 && isFamilyValidStorage(family, connectedAccounts, allFamilies);
-  }, [readOnly, lowStorageTier, ownerJoinedHostFamily, daysRemaining, family, connectedAccounts, allFamilies]);
+  }, [readOnly, lowStorageTier, ownerJoinedHostFamily, isDowngraded, daysRemaining, family, connectedAccounts, allFamilies]);
 
   const copyTimerRef = useRef(null);
 
@@ -344,9 +406,28 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
           {expiryStatus.text}
         </div>
 
-        {/* Edit/Delete Buttons (Admin only) */}
+        {/* Edit/Delete/Downgrade Buttons (Admin only) */}
         {!readOnly && (
           <div className="flex items-center gap-0.5 mt-0.5">
+            {onTogglePlanStatus && (
+              <button
+                type="button"
+                disabled={planBusy}
+                onClick={handleToggleDowngrade}
+                aria-label={isDowngraded ? 'Pulihkan ke PRO Aktif' : 'Tandai PRO Hilang (FREE)'}
+                title={isDowngraded ? 'Pulihkan ke PRO Aktif' : 'Tandai PRO Hilang (Turun ke FREE)'}
+                className={cn(
+                  "p-2 transition-colors cursor-pointer disabled:opacity-40",
+                  isDowngraded
+                    ? "text-red-600 dark:text-red-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+                    : theme === 'light'
+                      ? "text-stone-400 hover:text-amber-700"
+                      : "text-stone-500 hover:text-amber-400"
+                )}
+              >
+                {isDowngraded ? <RotateCcw className="w-3.5 h-3.5" /> : <ShieldAlert className="w-3.5 h-3.5" />}
+              </button>
+            )}
             <button
               onClick={() => onEdit(family)}
               aria-label="Edit family"
@@ -367,11 +448,16 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
         )}
       </div>
 
-      {/* SOLD & BANNED Badges (Admin + Public) */}
+      {/* SOLD, BANNED & PRO HILANG Badges (Admin + Public) */}
       <div className="absolute top-0 left-0 z-20 flex flex-col items-start gap-px p-0">
         {!readOnly && family.isBanned && (
           <div className="bg-red-700 text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-md">
             BANNED
+          </div>
+        )}
+        {!readOnly && isDowngraded && (
+          <div className="bg-wine text-white px-3 py-1 text-[10px] font-bold uppercase tracking-widest shadow-md">
+            PRO HILANG (FREE)
           </div>
         )}
         {((!readOnly && family.sold_at) || (readOnly && family.soldAt)) && (
@@ -569,6 +655,124 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
              </div>
           )}
         </div>
+
+        {/* US-06: Panel Dampak Migrasi saat Family PRO Hilang / Turun ke FREE (Admin only) */}
+        {!isPublicView && isDowngraded && (
+          <div
+            role="alert"
+            className={cn(
+              "mb-6 p-3.5 border text-xs space-y-2.5",
+              isDark
+                ? "border-red-500/45 bg-red-950/35 text-red-100"
+                : "border-red-700/35 bg-red-50 text-red-950",
+            )}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-start gap-2">
+                <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" />
+                <div>
+                  <p className="font-bold text-xs">Family PRO Hilang (Turun ke FREE)</p>
+                  {(family.downgradeNote || family.downgrade_note) && (
+                    <p className="text-[11px] opacity-85 mt-0.5">
+                      {family.downgradeNote || family.downgrade_note}
+                    </p>
+                  )}
+                </div>
+              </div>
+              {onTogglePlanStatus && (
+                <button
+                  type="button"
+                  disabled={planBusy}
+                  onClick={handleToggleDowngrade}
+                  className={cn(
+                    "shrink-0 px-2 py-1 text-[11px] font-semibold border transition-colors cursor-pointer disabled:opacity-40",
+                    isDark
+                      ? "border-red-400/40 hover:bg-red-900/40 text-red-100"
+                      : "border-red-700/35 hover:bg-red-100 text-red-900",
+                  )}
+                >
+                  Pulihkan PRO
+                </button>
+              )}
+            </div>
+
+            {downgradeImpact && downgradeImpact.totalPersonalAccounts > 0 && (
+              <div
+                className={cn(
+                  "pt-2.5 border-t space-y-2",
+                  isDark ? "border-red-500/25" : "border-red-700/20",
+                )}
+              >
+                <p className="text-[11px] font-semibold tabular-nums">
+                  Dampak Akun Pribadi: {downgradeImpact.safeToMove.length} Aman Dipindah ·{' '}
+                  {downgradeImpact.cooldownLocked.length} Terkunci Cooldown
+                  {downgradeImpact.unverified.length > 0
+                    ? ` · ${downgradeImpact.unverified.length} Perlu Verifikasi`
+                    : ''}
+                </p>
+
+                {downgradeImpact.safeToMove.length > 0 && (
+                  <div className="space-y-1.5">
+                    {downgradeImpact.safeToMove.map((acc) => (
+                      <div
+                        key={acc.email}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="font-mono truncate">{acc.email}</span>
+                        {onMigrateAccount && (
+                          <button
+                            type="button"
+                            onClick={() => onMigrateAccount(acc.email)}
+                            className={cn(
+                              "shrink-0 inline-flex items-center gap-1 px-2 py-0.5 font-semibold transition-colors cursor-pointer",
+                              isDark
+                                ? "bg-stone-100 text-stone-950 hover:bg-white"
+                                : "bg-stone-900 text-stone-50 hover:bg-stone-800",
+                            )}
+                          >
+                            Cari Family PRO
+                            <ArrowUpRight className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {downgradeImpact.cooldownLocked.length > 0 && (
+                  <div className="space-y-1.5">
+                    {downgradeImpact.cooldownLocked.map((acc) => (
+                      <div
+                        key={acc.email}
+                        className="flex items-center justify-between gap-2 text-[11px]"
+                      >
+                        <span className="font-mono truncate">{acc.email}</span>
+                        <button
+                          type="button"
+                          onClick={() => onOpenHistory?.(acc.email)}
+                          className={cn(
+                            "shrink-0 px-2 py-0.5 border font-semibold tabular-nums cursor-pointer",
+                            isDark
+                              ? "border-red-400/40 bg-red-950/60 text-red-200 hover:border-red-300"
+                              : "border-red-700/40 bg-white text-red-900 hover:bg-red-100",
+                          )}
+                        >
+                          Tahan · Bebas {formatDateId(acc.cooldown.cooldownEndsAt)}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {downgradeImpact.unverified.length > 0 && (
+                  <p className="text-[11px] font-medium">
+                    {downgradeImpact.unverified.length} akun perlu verifikasi cooldown karena riwayat gagal dimuat.
+                  </p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Low Storage Problem Alert (Admin only) */}
         {!isPublicView && lowStorageTier && (
@@ -925,7 +1129,7 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
                           {index + 1}
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className={cn("text-sm truncate font-medium", theme === 'light' ? "text-stone-900" : "text-stone-300")}>
                               {member.name?.trim() || member.email || 'Unnamed Member'}
                             </span>
@@ -937,6 +1141,24 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
                                 Pribadi
                               </span>
                             )}
+                            {!readOnly &&
+                              member.email &&
+                              isPersonalAccountEmail(
+                                member.email,
+                                member.memberType || member.member_type,
+                                cockpitAccounts,
+                                allFamilies,
+                              ) && (
+                                <CooldownStatusBadge
+                                  compact
+                                  isDark={isDark}
+                                  summary={cooldownByEmail?.get(normalizeEmail(member.email)) || null}
+                                  loading={historyLoading}
+                                  error={historyError}
+                                  onClick={onOpenHistory ? () => onOpenHistory(member.email) : undefined}
+                                  onRetry={onRetryHistory}
+                                />
+                              )}
                           </div>
                           {member.email && member.name?.trim() && (
                             <div className="text-[10px] text-stone-400 dark:text-stone-500 font-mono truncate mt-0.5">
