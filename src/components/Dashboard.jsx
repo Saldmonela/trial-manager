@@ -485,8 +485,8 @@ export default function Dashboard({ onLogout }) {
     const filtered = families.filter((f) => {
       if (!showBanned && (f.isBanned || f.is_banned)) return false;
 
-      if (filter === 'issues') return isFamilyAttentionNeeded(f, connectedAccounts);
-      if (!showIssues && isFamilyAttentionNeeded(f, connectedAccounts)) return false;
+      if (filter === 'issues') return isFamilyAttentionNeeded(f, connectedAccounts, families);
+      if (!showIssues && isFamilyAttentionNeeded(f, connectedAccounts, families)) return false;
 
       if (filter === 'all') return true;
       if (filter === 'full') return isFamilyFull(f);
@@ -550,7 +550,7 @@ export default function Dashboard({ onLogout }) {
 
   const stats = useMemo(() => {
     const validFamilies = families.filter(
-      (f) => !f.isBanned && !f.is_banned && isFamilyValidStorage(f, connectedAccounts),
+      (f) => !f.isBanned && !f.is_banned && isFamilyValidStorage(f, connectedAccounts, families),
     );
     return {
       total: validFamilies.length,
@@ -564,7 +564,7 @@ export default function Dashboard({ onLogout }) {
   const expiringSoonCount = useMemo(() => {
     return families.filter((f) => {
       if (f.isBanned || f.is_banned) return false;
-      if (!isFamilyValidStorage(f, connectedAccounts)) return false;
+      if (!isFamilyValidStorage(f, connectedAccounts, families)) return false;
       const days = getDaysRemaining(f.expiryDate);
       return days !== null && days <= 7 && days >= 0;
     }).length;
@@ -573,7 +573,7 @@ export default function Dashboard({ onLogout }) {
   const issuesCount = useMemo(() => {
     return families.filter((f) => {
       if (!showBanned && (f.isBanned || f.is_banned)) return false;
-      return isFamilyAttentionNeeded(f, connectedAccounts);
+      return isFamilyAttentionNeeded(f, connectedAccounts, families);
     }).length;
   }, [families, showBanned, connectedAccounts]);
 
@@ -807,6 +807,7 @@ export default function Dashboard({ onLogout }) {
           theme={theme}
           t={t}
           sortedFamilies={sortedFamilies}
+          allFamilies={families}
           hasAnyFamilies={families.length > 0}
           onClearFilters={() => {
             setFilter('all');

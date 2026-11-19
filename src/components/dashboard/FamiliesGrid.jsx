@@ -8,6 +8,7 @@ export default function FamiliesGrid({
   theme,
   t,
   sortedFamilies,
+  allFamilies = [],
   hasAnyFamilies = false,
   onClearFilters,
   onOpenAddFamily,
@@ -131,6 +132,7 @@ export default function FamiliesGrid({
           <FamilyCardAdmin
             key={family.id}
             family={family}
+            allFamilies={allFamilies}
             onDelete={onDelete}
             onEdit={onEdit}
             onAddMember={onAddMember}

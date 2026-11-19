@@ -70,11 +70,12 @@ function isFamilyBanned(family: Family): boolean {
 export function isFamilyActiveForPro(
   family: Family,
   connectedAccounts: ConnectedAccount[] = [],
+  allFamilies: Family[] = [],
 ): boolean {
   if (!family) return false;
   if (isFamilyBanned(family)) return false;
   if (family.isActive === false) return false;
-  if (isFamilyAttentionNeeded(family, connectedAccounts)) return false;
+  if (isFamilyAttentionNeeded(family, connectedAccounts, allFamilies)) return false;
   return true;
 }
 
@@ -144,7 +145,7 @@ export function buildCockpitOverview(
   };
 
   for (const family of families) {
-    const active = isFamilyActiveForPro(family, connectedAccounts);
+    const active = isFamilyActiveForPro(family, connectedAccounts, families);
     const banned = isFamilyBanned(family);
     const expiryDate = family.expiryDate ?? null;
     const daysRemaining = getDaysRemaining(expiryDate);
@@ -365,7 +366,7 @@ export function getRecommendedFamiliesForAccount(
   const results: RecommendedFamily[] = [];
 
   for (const family of families) {
-    if (!isFamilyActiveForPro(family, connectedAccounts)) continue;
+    if (!isFamilyActiveForPro(family, connectedAccounts, families)) continue;
 
     const slotsUsed = getSlotsUsed(family);
     const slotsAvailable = getSlotsAvailable(family);

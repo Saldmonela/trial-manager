@@ -20,6 +20,7 @@ import {
   hasFamilyExpiryGapWarning,
   isFamilyAttentionNeeded,
   isFamilyValidStorage,
+  findOwnerJoinedAsMemberFamily,
 } from '../familyUtils';
 
 describe('familyUtils', () => {
@@ -382,6 +383,44 @@ describe('familyUtils', () => {
       expect(isFamilyValidStorage({ id: '4', ownerEmail: 'two-tb@example.test', members: [] }, accounts)).toBe(false);
       expect(isFamilyValidStorage({ id: '5', ownerEmail: 'fifteen-gb@example.test', members: [] }, accounts)).toBe(false);
       expect(isFamilyValidStorage({ id: '6', ownerEmail: 'unconnected@example.test', members: [] }, accounts)).toBe(false);
+    });
+
+    it('keeps an expired owner family in attention-needed when its owner joins another active 5TB family as a member', () => {
+      const expiredOwnerFamily = {
+        id: 'fam-24',
+        name: 'Family 24',
+        ownerEmail: 'hujanawan999@gmail.com',
+        expiryDate: inDays(-2),
+        members: [],
+      };
+      const hostFamily = {
+        id: 'fam-host',
+        name: 'Family Host',
+        ownerEmail: 'mayfunny73@gmail.com',
+        expiryDate: inDays(60),
+        members: [{ id: 'm1', name: 'Hujan', email: 'hujanawan999@gmail.com' }],
+      };
+      const allFamilies = [expiredOwnerFamily, hostFamily];
+      // Google Drive now reports 5 TB on hujanawan999@gmail.com because it shares Family Host's pool
+      const accounts = [
+        { email: 'hujanawan999@gmail.com', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 1_400_000 },
+        { email: 'mayfunny73@gmail.com', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 500 * 1024 ** 3 },
+      ];
+
+      expect(findOwnerJoinedAsMemberFamily(expiredOwnerFamily, allFamilies)).toEqual({
+        id: 'fam-host',
+        name: 'Family Host',
+        ownerEmail: 'mayfunny73@gmail.com',
+      });
+      expect(findOwnerJoinedAsMemberFamily(hostFamily, allFamilies)).toBeNull();
+
+      // Family 24 must NOT be considered valid storage and MUST remain in Bermasalah/Expired
+      expect(isFamilyValidStorage(expiredOwnerFamily, accounts, allFamilies)).toBe(false);
+      expect(isFamilyAttentionNeeded(expiredOwnerFamily, accounts, allFamilies)).toBe(true);
+
+      // Family Host remains healthy and valid
+      expect(isFamilyValidStorage(hostFamily, accounts, allFamilies)).toBe(true);
+      expect(isFamilyAttentionNeeded(hostFamily, accounts, allFamilies)).toBe(false);
     });
   });
 });

@@ -11,7 +11,8 @@ import {
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
   isFamilyFull, getDaysRemaining, getExpiryStatus,
-  getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning, isFamilyValidStorage
+  getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning, isFamilyValidStorage,
+  findOwnerJoinedAsMemberFamily
 } from '../../lib/familyUtils';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -69,7 +70,7 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
  *   onDisconnectDrive?: (id: string) => void,
  * }} props
  */
-function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
+function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
   const { theme } = useTheme();
   const { t, language } = useLanguage();
   const [showEmail, setShowEmail] = useState(false);
@@ -194,10 +195,15 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
     [family],
   );
 
+  const ownerJoinedHostFamily = useMemo(() => {
+    if (readOnly) return null;
+    return findOwnerJoinedAsMemberFamily(family, allFamilies);
+  }, [readOnly, family, allFamilies]);
+
   const isExpiredWithValidStorage = useMemo(() => {
-    if (readOnly || lowStorageTier) return false;
-    return daysRemaining !== null && daysRemaining < 0 && isFamilyValidStorage(family, connectedAccounts);
-  }, [readOnly, lowStorageTier, daysRemaining, family, connectedAccounts]);
+    if (readOnly || lowStorageTier || ownerJoinedHostFamily) return false;
+    return daysRemaining !== null && daysRemaining < 0 && isFamilyValidStorage(family, connectedAccounts, allFamilies);
+  }, [readOnly, lowStorageTier, ownerJoinedHostFamily, daysRemaining, family, connectedAccounts, allFamilies]);
 
   const copyTimerRef = useRef(null);
 
@@ -577,6 +583,27 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
               </p>
               <p className="font-normal opacity-90">
                 Storage Google Drive turun menjadi {lowStorageTier}. Masa berlaku akun otomatis diubah ke EXPIRED.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Owner Joined Another Family as Member Notice (Admin only) */}
+        {!isPublicView && ownerJoinedHostFamily && (
+          <div
+            role="status"
+            className="mb-6 p-3 border flex items-start gap-2.5 bg-stone-500/10 border-stone-500/30 text-stone-700 dark:text-stone-300 text-xs font-semibold leading-relaxed"
+          >
+            <Users className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+            <div>
+              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5 text-amber-600 dark:text-amber-400">
+                Owner Bergabung di Family Lain
+              </p>
+              <p className="font-normal opacity-90">
+                Akun owner ini terdaftar sebagai member di{' '}
+                <span className="font-semibold">{ownerJoinedHostFamily.name}</span>
+                {ownerJoinedHostFamily.ownerEmail ? ` (${ownerJoinedHostFamily.ownerEmail})` : ''}.
+                Kuota Drive berasal dari family tersebut, sehingga family ini tetap dianggap EXPIRED.
               </p>
             </div>
           </div>

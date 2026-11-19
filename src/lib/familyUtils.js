@@ -98,11 +98,38 @@ export function hasFamilyExpiryGapWarning(family) {
 }
 
 /**
- * Menentukan apakah family memiliki kapasitas Drive valid (>= 5 TB atau Unlimited).
- * Mengembalikan false jika belum terhubung ke Drive atau kapasitas < 5 TB (mis. 2 TB, 15 GB, 5 GB).
+ * Mengecek apakah akun owner dari `family` saat ini terdaftar sebagai member
+ * di family lain (misalnya setelah akun owner ini expired lalu dimasukkan ke family aktif lain).
+ * Jika ya, mengembalikan ringkasan family tujuan { id, name, ownerEmail }; jika tidak, null.
  */
-export function isFamilyValidStorage(family, connectedAccounts = []) {
+export function findOwnerJoinedAsMemberFamily(family, allFamilies = []) {
+  const ownerEmail = family?.ownerEmail?.trim().toLowerCase();
+  if (!ownerEmail || !Array.isArray(allFamilies) || allFamilies.length === 0) return null;
+
+  for (const other of allFamilies) {
+    if (!other || other.id === family.id) continue;
+    const isMemberHere = (other.members || []).some(
+      (m) => typeof m?.email === 'string' && m.email.trim().toLowerCase() === ownerEmail,
+    );
+    if (isMemberHere) {
+      return {
+        id: other.id,
+        name: other.name || other.ownerEmail || 'Family Lain',
+        ownerEmail: other.ownerEmail || null,
+      };
+    }
+  }
+  return null;
+}
+
+/**
+ * Menentukan apakah family memiliki kapasitas Drive valid (>= 5 TB atau Unlimited).
+ * Mengembalikan false jika belum terhubung ke Drive, kapasitas < 5 TB (mis. 2 TB, 15 GB, 5 GB),
+ * atau jika akun owner-nya sudah bergabung sebagai member di family lain (kuota 5 TB pinjaman).
+ */
+export function isFamilyValidStorage(family, connectedAccounts = [], allFamilies = []) {
   if (!family) return false;
+  if (findOwnerJoinedAsMemberFamily(family, allFamilies)) return false;
   const { hasLive, ownerAccount, poolLimit, isUnlimited } = getFamilyPoolInfo(family, connectedAccounts);
   if (!hasLive) return false;
   if (ownerAccount) {
@@ -117,15 +144,18 @@ export function isFamilyValidStorage(family, connectedAccounts = []) {
 
 /**
  * Menentukan apakah family masuk kategori "Bermasalah / Expired":
- * - Jika terhubung ke Drive: hanya dianggap bermasalah/expired bila storage turun menjadi < 5 TB (mis. 5 GB, 15 GB, 2 TB).
+ * - Jika akun owner tercatat sebagai member di family lain: selalu dianggap expired/bermasalah
+ *   karena kuota Drive 5 TB berasal dari family tempat ia bergabung, bukan paket owner ini.
+ * - Jika terhubung ke Drive: dianggap bermasalah/expired bila storage turun menjadi < 5 TB (mis. 5 GB, 15 GB, 2 TB).
  *   Jika storage masih >= 5 TB (atau Unlimited), dianggap masih valid/belum expired meskipun ada gap member atau tanggal belum diperbarui.
  * - Jika belum terhubung ke Drive: dianggap expired hanya bila tanggal expiry sudah lewat.
  */
-export function isFamilyAttentionNeeded(family, connectedAccounts = []) {
+export function isFamilyAttentionNeeded(family, connectedAccounts = [], allFamilies = []) {
   if (!family) return false;
+  if (findOwnerJoinedAsMemberFamily(family, allFamilies)) return true;
   const { hasLive } = getFamilyPoolInfo(family, connectedAccounts);
   if (hasLive) {
-    return !isFamilyValidStorage(family, connectedAccounts);
+    return !isFamilyValidStorage(family, connectedAccounts, allFamilies);
   }
   const days = getDaysRemaining(family.expiryDate);
   return days !== null && days < 0;

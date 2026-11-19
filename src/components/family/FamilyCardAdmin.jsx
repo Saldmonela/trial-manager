@@ -3,6 +3,7 @@ import FamilyCard from './FamilyCard';
 
 export default function FamilyCardAdmin({
   family,
+  allFamilies = [],
   onDelete,
   onEdit,
   onAddMember,
@@ -22,6 +23,7 @@ export default function FamilyCardAdmin({
   return (
     <FamilyCard
       family={family}
+      allFamilies={allFamilies}
       onDelete={onDelete}
       onEdit={onEdit}
       onAddMember={onAddMember}
