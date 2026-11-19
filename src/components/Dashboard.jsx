@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
-import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts, isFamilyAttentionNeeded } from '../lib/familyUtils';
+import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts, isFamilyAttentionNeeded, isFamilyValidStorage } from '../lib/familyUtils';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
 import { useToast } from '../hooks/useToast';
@@ -549,22 +549,26 @@ export default function Dashboard({ onLogout }) {
   }, [filter]);
 
   const stats = useMemo(() => {
-    const activeFamilies = families.filter(f => !f.isBanned);
+    const validFamilies = families.filter(
+      (f) => !f.isBanned && !f.is_banned && isFamilyValidStorage(f, connectedAccounts),
+    );
     return {
-      total: activeFamilies.length,
-      full: activeFamilies.filter((f) => isFamilyFull(f)).length,
-      availableSlots: activeFamilies.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
-      totalMembers: activeFamilies.reduce((acc, f) => acc + (f.members?.length || 0), 0),
-      activeCount: activeFamilies.length, // Add this to pass to MetricsRow
+      total: validFamilies.length,
+      full: validFamilies.filter((f) => isFamilyFull(f)).length,
+      availableSlots: validFamilies.reduce((acc, f) => acc + getSlotsAvailable(f), 0),
+      totalMembers: validFamilies.reduce((acc, f) => acc + (f.members?.length || 0), 0),
+      activeCount: validFamilies.length,
     };
-  }, [families]);
+  }, [families, connectedAccounts]);
   
   const expiringSoonCount = useMemo(() => {
     return families.filter((f) => {
+      if (f.isBanned || f.is_banned) return false;
+      if (!isFamilyValidStorage(f, connectedAccounts)) return false;
       const days = getDaysRemaining(f.expiryDate);
       return days !== null && days <= 7 && days >= 0;
     }).length;
-  }, [families]);
+  }, [families, connectedAccounts]);
 
   const issuesCount = useMemo(() => {
     return families.filter((f) => {

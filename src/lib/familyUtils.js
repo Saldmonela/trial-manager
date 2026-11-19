@@ -10,7 +10,9 @@ export const MAX_STORAGE_GB = 5120;
 
 const GB_BYTES = 1_000_000_000;
 const GIB_BYTES = 1024 * 1024 * 1024;
+const TB_BYTES = 1_000_000_000_000;
 const LOW_QUOTA_CEILING_BYTES = 15.1 * GIB_BYTES;
+const VALID_STORAGE_FLOOR_BYTES = 4.9 * TB_BYTES;
 
 /**
  * Mendeteksi apakah kuota total Google Drive berada di tier bermasalah (5 GB atau 15 GB).
@@ -96,16 +98,37 @@ export function hasFamilyExpiryGapWarning(family) {
 }
 
 /**
- * Menentukan apakah family masuk kategori "Bermasalah / Expired" (bertanda merah, expired, atau Drive <= 15 GB).
+ * Menentukan apakah family memiliki kapasitas Drive valid (>= 5 TB atau Unlimited).
+ * Mengembalikan false jika belum terhubung ke Drive atau kapasitas < 5 TB (mis. 2 TB, 15 GB, 5 GB).
+ */
+export function isFamilyValidStorage(family, connectedAccounts = []) {
+  if (!family) return false;
+  const { hasLive, ownerAccount, poolLimit, isUnlimited } = getFamilyPoolInfo(family, connectedAccounts);
+  if (!hasLive) return false;
+  if (ownerAccount) {
+    if (ownerAccount.totalBytes === null || ownerAccount.totalBytes === undefined) return true;
+    const n = Number(ownerAccount.totalBytes);
+    return Number.isFinite(n) && n >= VALID_STORAGE_FLOOR_BYTES;
+  }
+  if (isUnlimited) return true;
+  const n = Number(poolLimit);
+  return Number.isFinite(n) && n >= VALID_STORAGE_FLOOR_BYTES;
+}
+
+/**
+ * Menentukan apakah family masuk kategori "Bermasalah / Expired":
+ * - Jika terhubung ke Drive: hanya dianggap bermasalah/expired bila storage turun menjadi < 5 TB (mis. 5 GB, 15 GB, 2 TB).
+ *   Jika storage masih >= 5 TB (atau Unlimited), dianggap masih valid/belum expired meskipun ada gap member atau tanggal belum diperbarui.
+ * - Jika belum terhubung ke Drive: dianggap expired hanya bila tanggal expiry sudah lewat.
  */
 export function isFamilyAttentionNeeded(family, connectedAccounts = []) {
   if (!family) return false;
-  if (family.isBanned || family.is_banned) return true;
+  const { hasLive } = getFamilyPoolInfo(family, connectedAccounts);
+  if (hasLive) {
+    return !isFamilyValidStorage(family, connectedAccounts);
+  }
   const days = getDaysRemaining(family.expiryDate);
-  if (days !== null && days <= 3) return true; // Expired (< 0) atau kritis merah (0..3 hari)
-  if (hasFamilyExpiryGapWarning(family)) return true;
-  if (getFamilyLowStorageLabel(family, connectedAccounts) !== null) return true;
-  return false;
+  return days !== null && days < 0;
 }
 
 /**

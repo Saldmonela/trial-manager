@@ -53,9 +53,11 @@ const inDays = (days: number) => new Date(Date.now() + days * 86400_000).toISOSt
 vi.mock('../../hooks/useConnectedAccounts', () => ({
   useConnectedAccounts: () => ({
     accounts: [
-      { id: 'a1', email: 'healthy@test.com', status: 'connected', totalBytes: 2 * 1024 ** 4, usedBytes: 100 * 1024 ** 3, lastSyncedAt: new Date().toISOString() },
-      { id: 'a2', email: 'low15@test.com', status: 'connected', totalBytes: 15 * 1024 ** 3, usedBytes: 1024 ** 3, lastSyncedAt: new Date().toISOString() },
-      { id: 'a3', email: 'low10@test.com', status: 'connected', totalBytes: 10 * 1024 ** 3, usedBytes: 1024 ** 3, lastSyncedAt: new Date().toISOString() },
+      { id: 'a1', email: 'five5tb@test.com', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 817 * 1024 ** 3, lastSyncedAt: new Date().toISOString() },
+      { id: 'a2', email: 'five5tb-gap@test.com', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 171 * 1024 ** 3, lastSyncedAt: new Date().toISOString() },
+      { id: 'a3', email: 'five5tb-old@test.com', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 100 * 1024 ** 3, lastSyncedAt: new Date().toISOString() },
+      { id: 'a4', email: 'low15@test.com', status: 'connected', totalBytes: 15 * 1024 ** 3, usedBytes: 1024 ** 3, lastSyncedAt: new Date().toISOString() },
+      { id: 'a5', email: 'low5@test.com', status: 'connected', totalBytes: 5 * 1024 ** 3, usedBytes: 1024 ** 3, lastSyncedAt: new Date().toISOString() },
     ],
     loading: false,
     error: null,
@@ -70,12 +72,12 @@ vi.mock('../../hooks/useConnectedAccounts', () => ({
 vi.mock('../../hooks/useSupabaseData', () => ({
   useSupabaseData: () => ({
     families: [
-      { id: '1', name: 'Healthy Family', ownerEmail: 'healthy@test.com', expiryDate: inDays(45), createdAt: '2026-01-01', members: [] },
-      { id: '2', name: 'Expired Family', ownerEmail: 'healthy@test.com', expiryDate: inDays(-3), createdAt: '2026-01-02', members: [] },
-      { id: '3', name: 'Red Critical Family', ownerEmail: 'healthy@test.com', expiryDate: inDays(2), createdAt: '2026-01-03', members: [] },
-      { id: '4', name: 'Low 15GB Family', ownerEmail: 'low15@test.com', expiryDate: inDays(30), createdAt: '2026-01-04', members: [] },
-      { id: '5', name: 'Under 15GB Family', ownerEmail: 'low10@test.com', expiryDate: inDays(30), createdAt: '2026-01-05', members: [] },
-      { id: '6', name: 'Member Gap Family', ownerEmail: 'healthy@test.com', expiryDate: inDays(10), createdAt: '2026-01-06', members: [{ memberType: 'pembeli', expiryDate: inDays(30) }] },
+      { id: '1', name: 'Healthy 5TB Family', ownerEmail: 'five5tb@test.com', expiryDate: inDays(45), createdAt: '2026-01-01', members: [] },
+      { id: '2', name: '5TB Member Gap Family', ownerEmail: 'five5tb-gap@test.com', expiryDate: inDays(10), createdAt: '2026-01-02', members: [{ memberType: 'pembeli', expiryDate: inDays(60) }] },
+      { id: '3', name: '5TB Stale Date Family', ownerEmail: 'five5tb-old@test.com', expiryDate: inDays(-5), createdAt: '2026-01-03', members: [] },
+      { id: '4', name: 'Dropped 15GB Family', ownerEmail: 'low15@test.com', expiryDate: inDays(-2), createdAt: '2026-01-04', members: [] },
+      { id: '5', name: 'Dropped 5GB Family', ownerEmail: 'low5@test.com', expiryDate: inDays(-2), createdAt: '2026-01-05', members: [] },
+      { id: '6', name: 'Unconnected Expired Family', ownerEmail: 'none@test.com', expiryDate: inDays(-3), createdAt: '2026-01-06', members: [] },
     ],
     loading: false,
     refetch: vi.fn(),
@@ -120,36 +122,36 @@ vi.mock('../dashboard/FamiliesGrid', () => ({
 }));
 
 describe('Dashboard Bermasalah / Expired filter tab & hide toggle', () => {
-  it('hides expired/red/<=15GB families by default, toggles inline with Tampilkan Bermasalah, and isolates them in the Bermasalah / Expired tab', () => {
+  it('keeps 5TB families (even with member gap or stale date) visible in main list, hides reduced-storage/unconnected-expired by default, and toggles/isolates them', () => {
     render(<Dashboard onLogout={vi.fn()} />);
 
-    // Default: showIssues = false -> hanya Healthy Family yang tampil di Semua Keluarga
-    expect(screen.getAllByTestId('family-card').map((el) => el.textContent)).toEqual(['Healthy Family']);
+    // Default: showIssues = false -> semua family 5TB tetap tampil (termasuk yang ada member gap / tanggal belum di-update)
+    expect(screen.getAllByTestId('family-card').map((el) => el.textContent)).toEqual([
+      '5TB Stale Date Family',
+      '5TB Member Gap Family',
+      'Healthy 5TB Family',
+    ]);
 
     // Klik Tampilkan Bermasalah -> semua 6 family tampil
     const toggleIssuesBtn = screen.getByRole('button', { name: /Tampilkan Bermasalah/i });
-    expect(toggleIssuesBtn).toHaveTextContent('5');
+    expect(toggleIssuesBtn).toHaveTextContent('3');
     fireEvent.click(toggleIssuesBtn);
     expect(screen.getAllByTestId('family-card')).toHaveLength(6);
 
-    // Klik Sembunyikan Bermasalah -> kembali sembunyi
+    // Klik Sembunyikan Bermasalah -> kembali sembunyikan 3 akun yang bermasalah/expired
     fireEvent.click(screen.getByRole('button', { name: /Sembunyikan Bermasalah/i }));
-    expect(screen.getAllByTestId('family-card').map((el) => el.textContent)).toEqual(['Healthy Family']);
+    expect(screen.getAllByTestId('family-card')).toHaveLength(3);
 
-    // Klik tab kategori Bermasalah / Expired -> tampilkan 5 family bermasalah saja
+    // Klik tab kategori Bermasalah / Expired -> hanya 3 family yang storage-nya turun / expired tanpa 5TB
     const issuesTab = screen.getByRole('button', { name: /Bermasalah \/ Expired/i });
-    expect(issuesTab).toHaveTextContent('5');
+    expect(issuesTab).toHaveTextContent('3');
     fireEvent.click(issuesTab);
 
     const visibleNames = screen.getAllByTestId('family-card').map((el) => el.textContent);
-    expect(visibleNames).not.toContain('Healthy Family');
-    expect(visibleNames).toEqual(expect.arrayContaining([
-      'Expired Family',
-      'Red Critical Family',
-      'Low 15GB Family',
-      'Under 15GB Family',
-      'Member Gap Family',
-    ]));
-    expect(visibleNames).toHaveLength(5);
+    expect(visibleNames).toEqual([
+      'Unconnected Expired Family',
+      'Dropped 5GB Family',
+      'Dropped 15GB Family',
+    ]);
   });
 });

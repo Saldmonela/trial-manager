@@ -11,7 +11,7 @@ import {
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
   isFamilyFull, getDaysRemaining, getExpiryStatus,
-  getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning
+  getFamilyPoolInfo, getFamilyLowStorageLabel, hasFamilyExpiryGapWarning, isFamilyValidStorage
 } from '../../lib/familyUtils';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -193,6 +193,11 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
     () => hasFamilyExpiryGapWarning(family),
     [family],
   );
+
+  const isExpiredWithValidStorage = useMemo(() => {
+    if (readOnly || lowStorageTier) return false;
+    return daysRemaining !== null && daysRemaining < 0 && isFamilyValidStorage(family, connectedAccounts);
+  }, [readOnly, lowStorageTier, daysRemaining, family, connectedAccounts]);
 
   const copyTimerRef = useRef(null);
 
@@ -572,6 +577,23 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
               </p>
               <p className="font-normal opacity-90">
                 Storage Google Drive turun menjadi {lowStorageTier}. Masa berlaku akun otomatis diubah ke EXPIRED.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Expired Date but Storage Still >= 5TB Hint (Admin only) */}
+        {!isPublicView && isExpiredWithValidStorage && (
+          <div
+            className="mb-6 p-3 border flex items-start gap-2.5 bg-amber-500/10 border-amber-500/30 text-amber-700 dark:text-amber-400 text-xs font-semibold leading-relaxed"
+          >
+            <Calendar className="w-4 h-4 shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">
+                Storage Masih Normal (≥ 5 TB)
+              </p>
+              <p className="font-normal opacity-90">
+                Masa berlaku tercatat EXPIRED, tapi kuota Drive masih aman. Perbarui tanggal expired jika akun sudah diperpanjang.
               </p>
             </div>
           </div>

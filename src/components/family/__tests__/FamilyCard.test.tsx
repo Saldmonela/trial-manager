@@ -162,4 +162,39 @@ describe('FamilyCard badge sisa masa aktif', () => {
     );
     expect(screen.queryByText(/Akun Bermasalah/)).not.toBeInTheDocument();
   });
+
+  it('menampilkan pengingat jika tanggal expired namun storage Drive masih >= 5TB', () => {
+    const noop = vi.fn();
+    render(
+      <FamilyCard
+        family={{ id: 'f1', name: 'Family 5TB Expired', ownerEmail: 'owner5tb@example.test', expiryDate: inDays(-5), members: [] }}
+        connectedAccounts={[{
+          id: 'acc-5tb',
+          provider: 'google_drive',
+          providerAccountId: 'sub-5tb',
+          email: 'owner5tb@example.test',
+          displayName: 'Owner',
+          avatarUrl: null,
+          status: 'connected',
+          totalBytes: 5 * 1024 ** 4,
+          usedBytes: 817 * 1024 ** 3,
+          availableBytes: 5 * 1024 ** 4 - 817 * 1024 ** 3,
+          trashBytes: 0,
+          lastSyncedAt: TODAY.toISOString(),
+        }]}
+        onDelete={noop}
+        onEdit={noop}
+        onAddMember={noop}
+        onRemoveMember={noop}
+        onEditMember={noop}
+        onCancelSale={noop}
+        onRequest={noop}
+        onConnectDrive={noop}
+        onSyncDrive={noop}
+        onDisconnectDrive={noop}
+      />,
+    );
+    expect(screen.getByText('EXPIRED')).toBeInTheDocument();
+    expect(screen.getByText(/Storage Masih Normal/i)).toBeInTheDocument();
+  });
 });

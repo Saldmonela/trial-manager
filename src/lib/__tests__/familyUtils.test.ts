@@ -19,6 +19,7 @@ import {
   getFamilyLowStorageLabel,
   hasFamilyExpiryGapWarning,
   isFamilyAttentionNeeded,
+  isFamilyValidStorage,
 } from '../familyUtils';
 
 describe('familyUtils', () => {
@@ -331,30 +332,56 @@ describe('familyUtils', () => {
       expect(isLowDriveQuotaBytes(null)).toBe(false);
     });
 
-    it('groups expired, red critical, member gap, and <=15GB families into attention-needed', () => {
+    it('excludes >= 5TB families from attention-needed even with member gap or stale expiry, and includes reduced-storage or unconnected expired families', () => {
       const accounts = [
+        { email: 'five-tb@example.test', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 817 * 1024 ** 3 },
         { email: 'low15@example.test', status: 'connected', totalBytes: 15 * 1024 ** 3, usedBytes: 1024 ** 3 },
         { email: 'low10@example.test', status: 'connected', totalBytes: 10 * 1024 ** 3, usedBytes: 1024 ** 3 },
-        { email: 'healthy@example.test', status: 'connected', totalBytes: 2 * 1024 ** 4, usedBytes: 100 * 1024 ** 3 },
+        { email: 'two-tb@example.test', status: 'connected', totalBytes: 2 * 1024 ** 4, usedBytes: 100 * 1024 ** 3 },
       ];
 
-      expect(isFamilyAttentionNeeded({ id: '1', ownerEmail: 'healthy@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(false);
-      expect(isFamilyAttentionNeeded({ id: '2', ownerEmail: 'healthy@example.test', expiryDate: inDays(5), members: [] }, accounts)).toBe(false);
-      expect(isFamilyAttentionNeeded({ id: '3', ownerEmail: 'healthy@example.test', expiryDate: inDays(-1), members: [] }, accounts)).toBe(true);
-      expect(isFamilyAttentionNeeded({ id: '4', ownerEmail: 'healthy@example.test', expiryDate: inDays(2), members: [] }, accounts)).toBe(true);
-      expect(isFamilyAttentionNeeded({ id: '5', ownerEmail: 'low15@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
-      expect(isFamilyAttentionNeeded({ id: '6', ownerEmail: 'low10@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
-      expect(getFamilyLowStorageLabel({ id: '6', ownerEmail: 'low10@example.test', members: [] }, accounts)).toBe('10 GB');
+      // Masih 5TB -> tidak masuk Bermasalah/Expired (walaupun ada member gap atau tanggal expired)
+      expect(isFamilyAttentionNeeded({ id: '1', ownerEmail: 'five-tb@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(false);
+      expect(isFamilyAttentionNeeded({ id: '2', ownerEmail: 'five-tb@example.test', expiryDate: inDays(-5), members: [] }, accounts)).toBe(false);
+      expect(isFamilyAttentionNeeded({
+        id: '3',
+        ownerEmail: 'five-tb@example.test',
+        expiryDate: inDays(10),
+        members: [{ memberType: 'pembeli', expiryDate: inDays(40) }],
+      }, accounts)).toBe(false);
+
+      // Storage berkurang (< 5TB: 15GB, 10GB, 2TB) -> masuk Bermasalah/Expired
+      expect(isFamilyAttentionNeeded({ id: '4', ownerEmail: 'low15@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
+      expect(isFamilyAttentionNeeded({ id: '5', ownerEmail: 'low10@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
+      expect(isFamilyAttentionNeeded({ id: '6', ownerEmail: 'two-tb@example.test', expiryDate: inDays(30), members: [] }, accounts)).toBe(true);
+      expect(getFamilyLowStorageLabel({ id: '5', ownerEmail: 'low10@example.test', members: [] }, accounts)).toBe('10 GB');
+
+      // Belum terhubung Drive -> ikut tanggal expired
+      expect(isFamilyAttentionNeeded({ id: '7', ownerEmail: 'unlinked@example.test', expiryDate: inDays(10), members: [] }, accounts)).toBe(false);
+      expect(isFamilyAttentionNeeded({ id: '8', ownerEmail: 'unlinked@example.test', expiryDate: inDays(-1), members: [] }, accounts)).toBe(true);
+
       expect(hasFamilyExpiryGapWarning({
-        id: '7',
+        id: '3',
         expiryDate: inDays(10),
         members: [{ memberType: 'pembeli', expiryDate: inDays(40) }],
       })).toBe(true);
-      expect(isFamilyAttentionNeeded({
-        id: '7',
-        expiryDate: inDays(10),
-        members: [{ memberType: 'pembeli', expiryDate: inDays(40) }],
-      }, accounts)).toBe(true);
+    });
+
+    it('isFamilyValidStorage returns true only for connected >= 5TB or Unlimited', () => {
+      const accounts = [
+        { email: 'five-tib@example.test', status: 'connected', totalBytes: 5 * 1024 ** 4, usedBytes: 817 * 1024 ** 3 },
+        { email: 'five-tb@example.test', status: 'connected', totalBytes: 5_000_000_000_000, usedBytes: 100 },
+        { email: 'unlimited@example.test', status: 'connected', totalBytes: null, usedBytes: 100 },
+        { email: 'two-tb@example.test', status: 'connected', totalBytes: 2 * 1024 ** 4, usedBytes: 100 },
+        { email: 'fifteen-gb@example.test', status: 'connected', totalBytes: 15 * 1024 ** 3, usedBytes: 100 },
+      ];
+
+      expect(isFamilyValidStorage({ id: '1', ownerEmail: 'five-tib@example.test', members: [] }, accounts)).toBe(true);
+      expect(isFamilyValidStorage({ id: '2', ownerEmail: 'five-tb@example.test', members: [] }, accounts)).toBe(true);
+      expect(isFamilyValidStorage({ id: '3', ownerEmail: 'unlimited@example.test', members: [] }, accounts)).toBe(true);
+      expect(isFamilyValidStorage({ id: '4', ownerEmail: 'two-tb@example.test', members: [] }, accounts)).toBe(false);
+      expect(isFamilyValidStorage({ id: '5', ownerEmail: 'fifteen-gb@example.test', members: [] }, accounts)).toBe(false);
+      expect(isFamilyValidStorage({ id: '6', ownerEmail: 'unconnected@example.test', members: [] }, accounts)).toBe(false);
     });
   });
 });
