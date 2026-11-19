@@ -10,7 +10,8 @@ import { cn, formatBytes } from '../../utils';
 import {
   MAX_FAMILY_SLOTS, MAX_STORAGE_GB,
   getSlotsUsed, getSlotsAvailable,
-  isFamilyFull, getDaysRemaining, getExpiryStatus
+  isFamilyFull, getDaysRemaining, getExpiryStatus,
+  detectLowStorageTier
 } from '../../lib/familyUtils';
 import { useTheme } from '../../context/ThemeContext';
 
@@ -48,6 +49,26 @@ const CircularProgress = ({ value, max, size = 40, strokeWidth = 3, color = 'cur
   );
 };
 
+/**
+ * @param {{
+ *   family: Record<string, any>,
+ *   onDelete?: (id: string) => void,
+ *   onEdit?: (family: Record<string, any>) => void,
+ *   onAddMember?: (familyId: string) => void,
+ *   onRemoveMember?: (familyId: string, memberId: string) => void,
+ *   onEditMember?: (familyId: string, member: Record<string, any>) => void,
+ *   onCancelSale?: (familyId: string) => void,
+ *   readOnly?: boolean,
+ *   onRequest?: (family: Record<string, any>) => void,
+ *   isHighlighted?: boolean,
+ *   forceExpand?: boolean,
+ *   highlightedEmail?: string | null,
+ *   connectedAccounts?: import('../../types').ConnectedAccount[],
+ *   onConnectDrive?: (email: string) => void,
+ *   onSyncDrive?: (id: string) => Promise<any> | void,
+ *   onDisconnectDrive?: (id: string) => void,
+ * }} props
+ */
 function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onEditMember, onCancelSale, readOnly = false, onRequest, isHighlighted = false, forceExpand = false, highlightedEmail = null, connectedAccounts = [], onConnectDrive, onSyncDrive, onDisconnectDrive }) {
   const { theme } = useTheme();
   const { t, language } = useLanguage();
@@ -178,6 +199,16 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
     return { hasLive: true, poolUsed, poolLimit, isUnlimited };
   }, [connectedAccounts, family.ownerEmail, family.members]);
 
+  const lowStorageTier = useMemo(() => {
+    if (readOnly) return null;
+    const ownerTier = driveAccount ? detectLowStorageTier(driveAccount.totalBytes) : null;
+    if (ownerTier) return ownerTier;
+    if (familyPool.hasLive && !familyPool.isUnlimited) {
+      return detectLowStorageTier(familyPool.poolLimit);
+    }
+    return null;
+  }, [readOnly, driveAccount, familyPool]);
+
   const hasExpiryWarning = useMemo(() => {
     if (!family.expiryDate || !family.members || family.members.length === 0) return false;
     const familyExpiryTime = new Date(family.expiryDate).getTime();
@@ -304,7 +335,9 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             ? "opacity-[0.7] border-amber-500/50 hover:border-amber-500"
             : !readOnly && family.isBanned
               ? "border-red-600 shadow-[4px_4px_0px_0px_rgba(220,38,38,0.3)] bg-red-50 dark:bg-red-950/30 dark:border-red-700"
-              : !isHighlighted && (expiryStatus?.color === 'red' || expiryStatus?.color === 'yellow')
+              : !readOnly && lowStorageTier
+                ? "border-red-500/70 shadow-[4px_4px_0px_0px_rgba(239,68,68,0.2)] bg-red-50/40 dark:bg-red-950/20 dark:border-red-800"
+                : !isHighlighted && (expiryStatus?.color === 'red' || expiryStatus?.color === 'yellow')
                 ? (theme === 'light'
                     ? "border-amber-400 shadow-[4px_4px_0px_0px_rgba(251,191,36,0.2)] bg-amber-50/30 hover:border-amber-500"
                     : "border-amber-700 shadow-[4px_4px_0px_0px_rgba(180,83,9,0.3)] bg-amber-950/10 hover:border-amber-600")
@@ -554,6 +587,24 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
           )}
         </div>
 
+        {/* Low Storage Problem Alert (Admin only) */}
+        {!isPublicView && lowStorageTier && (
+          <div
+            role="alert"
+            className="mb-6 p-3 border flex items-start gap-2.5 bg-red-500/10 border-red-500/30 text-red-600 dark:text-red-400 text-xs font-semibold leading-relaxed"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 animate-pulse" />
+            <div>
+              <p className="font-bold uppercase tracking-wider text-[10px] mb-0.5">
+                Akun Bermasalah (Storage {lowStorageTier})
+              </p>
+              <p className="font-normal opacity-90">
+                Storage Google Drive turun menjadi {lowStorageTier}. Masa berlaku akun otomatis diubah ke EXPIRED.
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Expiry Gap Warning (Admin only) */}
         {!isPublicView && hasExpiryWarning && (
           <div className="mb-6 p-3 border flex items-start gap-2.5 bg-red-500/10 border-red-500/20 text-red-600 dark:text-red-400 text-xs font-semibold leading-relaxed">
@@ -578,18 +629,18 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
               return (
                 <>
                   <div className="flex items-center justify-between text-xs mb-2">
-                    <span className={cn("font-medium uppercase tracking-widest flex items-center gap-1.5", theme === 'light' ? "text-stone-400" : "text-stone-500")}>
-                      <Cloud className="w-3 h-3 text-emerald-500" />
+                    <span className={cn("font-medium uppercase tracking-widest flex items-center gap-1.5", lowStorageTier ? "text-red-600 dark:text-red-400" : (theme === 'light' ? "text-stone-400" : "text-stone-500"))}>
+                      <Cloud className={cn("w-3 h-3", lowStorageTier ? "text-red-500" : "text-emerald-500")} />
                       {t('dashboard.family_card.storage')}
                     </span>
-                    <span className={cn("font-mono", theme === 'light' ? "text-stone-900" : "text-stone-50")}>
-                      {formatBytes(used)} <span className="text-stone-400">/ {isUnlimited ? 'Unlimited' : formatBytes(total)}</span>
+                    <span className={cn("font-mono", lowStorageTier ? "text-red-600 dark:text-red-400 font-semibold" : (theme === 'light' ? "text-stone-900" : "text-stone-50"))}>
+                      {formatBytes(used)} <span className={lowStorageTier ? "text-red-500/80" : "text-stone-400"}>/ {isUnlimited ? 'Unlimited' : formatBytes(total)}</span>
                     </span>
                   </div>
                   <div className={cn("w-full h-1.5 relative", theme === 'light' ? "bg-stone-200" : "bg-stone-800")}>
                     {!isUnlimited && (
                       <div
-                        className={cn("absolute top-0 left-0 h-full transition-all duration-500", isFullDrive ? "bg-wine" : "bg-emerald-500")}
+                        className={cn("absolute top-0 left-0 h-full transition-all duration-500", lowStorageTier ? "bg-red-500" : isFullDrive ? "bg-wine" : "bg-emerald-500")}
                         style={{ width: `${pct}%` }}
                       />
                     )}
@@ -653,12 +704,17 @@ function FamilyCard({ family, onDelete, onEdit, onAddMember, onRemoveMember, onE
             {family.ownerEmail && (
               <div className="grid grid-cols-[16px_minmax(0,1fr)_auto] items-center gap-3 py-1.5 pl-3 pr-2 -mx-2">
                 <div className="flex items-center justify-start shrink-0">
-                  <Cloud className={cn("w-4 h-4", driveAccount ? "text-emerald-500" : (theme === 'light' ? "text-stone-400" : "text-stone-600"))} />
+                  <Cloud className={cn("w-4 h-4", driveAccount ? (lowStorageTier ? "text-red-500" : "text-emerald-500") : (theme === 'light' ? "text-stone-400" : "text-stone-600"))} />
                 </div>
                 {driveAccount ? (
                   <span className="flex items-center gap-1.5 min-w-0">
-                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm border bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 shrink-0">
-                      Drive Connected
+                    <span className={cn(
+                      "px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest rounded-sm border shrink-0",
+                      lowStorageTier
+                        ? "bg-red-500/10 text-red-600 dark:text-red-400 border-red-500/30"
+                        : "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20"
+                    )}>
+                      {lowStorageTier ? `Drive Bermasalah · ${lowStorageTier}` : 'Drive Connected'}
                     </span>
                   </span>
                 ) : (

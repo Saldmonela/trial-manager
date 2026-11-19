@@ -1,9 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { supabase } from '../supabaseClient';
 import { invokeApi } from '../lib/api';
-import type { ActionResult, ConnectedAccount, JustConnectedDrive, StorageAggregate, UseConnectedAccountsReturn } from '../types';
+import type {
+  ActionResult,
+  ConnectedAccount,
+  ExpiredFamilySummary,
+  JustConnectedDrive,
+  LowStorageTier,
+  StorageAggregate,
+  SyncQuotaData,
+  UseConnectedAccountsReturn,
+} from '../types';
 const SAFE_COLUMNS = 'id,provider,provider_account_id,email,display_name,avatar_url,status,total_bytes,used_bytes,available_bytes,trash_bytes,last_synced_at,created_at';
-const completions = new Map<string, Promise<ActionResult<{ id?: string; intent?: string | null }>>>();
+type ConnectCompletionData = {
+  id?: string;
+  intent?: string | null;
+  lowStorageTier?: LowStorageTier | null;
+  expiredFamilies?: ExpiredFamilySummary[];
+};
+const completions = new Map<string, Promise<ActionResult<ConnectCompletionData>>>();
 export async function beginDriveConnection(path: '/admin' | '/storage' = '/storage', loginHint = '', intent = ''): Promise<ActionResult> {
   try {
     const nonce = Array.from(crypto.getRandomValues(new Uint8Array(32)), b => b.toString(16).padStart(2, '0')).join('');
@@ -18,7 +33,7 @@ export async function beginDriveConnection(path: '/admin' | '/storage' = '/stora
     window.location.assign(url.href); return { success: true };
   } catch { return { success: false, error: 'Tidak bisa memulai koneksi Drive.' }; }
 }
-export async function completeDriveConnection(): Promise<ActionResult<{ id?: string; intent?: string | null }> | null> {
+export async function completeDriveConnection(): Promise<ActionResult<ConnectCompletionData> | null> {
   const params = new URLSearchParams(window.location.hash.slice(1)); const state = params.get('drive_state'); const code = params.get('drive_code'); const error = params.get('drive_error');
   if (!state && !code && !error) return null;
   window.history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -28,8 +43,16 @@ export async function completeDriveConnection(): Promise<ActionResult<{ id?: str
   const nonce = sessionStorage.getItem('drive-nonce:' + state);
   const intent = sessionStorage.getItem('drive-intent:' + state) || null;
   if (!nonce) return { success: false, error: 'Selesaikan koneksi dari browser yang memulainya.' };
-  const promise = invokeApi<{ id?: string }>('drive-complete-connect', { state, code, browserNonce: nonce })
-    .then((res): ActionResult<{ id?: string; intent?: string | null }> => res.success ? { success: true, data: { id: res.data?.id, intent } } : res)
+  const promise = invokeApi<{ id?: string; lowStorageTier?: LowStorageTier | null; expiredFamilies?: ExpiredFamilySummary[] }>('drive-complete-connect', { state, code, browserNonce: nonce })
+    .then((res): ActionResult<ConnectCompletionData> => res.success ? {
+      success: true,
+      data: {
+        id: res.data?.id,
+        intent,
+        lowStorageTier: res.data?.lowStorageTier ?? null,
+        expiredFamilies: res.data?.expiredFamilies ?? [],
+      },
+    } : res)
     .finally(() => { sessionStorage.removeItem('drive-nonce:' + state); sessionStorage.removeItem('drive-intent:' + state); completions.delete(state); });
   completions.set(state, promise); return promise;
 }
@@ -58,20 +81,34 @@ export function useConnectedAccounts(): UseConnectedAccountsReturn {
       await refetch();
       if (!active) return;
       if (result?.success === false) setError(result.error || 'Koneksi gagal.');
-      else if (result?.success && result.data?.id) setJustConnected({ accountId: result.data.id, intent: result.data.intent ?? null });
+      else if (result?.success && result.data?.id) {
+        setJustConnected({
+          accountId: result.data.id,
+          intent: result.data.intent ?? null,
+          lowStorageTier: result.data.lowStorageTier ?? null,
+          expiredFamilies: result.data.expiredFamilies ?? [],
+        });
+      }
     })();
     const refresh = () => void refetch(); window.addEventListener('focus', refresh);
     return () => { active = false; window.removeEventListener('focus', refresh); };
   }, [refetch]);
-  const sync = useCallback(async (body: object): Promise<ActionResult> => {
-    const result = await invokeApi<{ results: { ok: boolean; error?: string }[] }>('drive-sync-quota', body);
+  const sync = useCallback(async (body: object): Promise<ActionResult<SyncQuotaData>> => {
+    const result = await invokeApi<SyncQuotaData>('drive-sync-quota', body);
     if (!result.success) return result;
     const results = result.data?.results;
     if (!results?.length) return { success: false, error: 'Server tidak mengirim hasil sinkronisasi.' };
     await refetch();
     const failed = results.filter(r => !r.ok);
-    if (failed.length) return { success: false, code: 'PARTIAL_SYNC', error: failed.length + ' akun gagal disinkronkan. ' + (failed[0].error || '') };
-    return { success: true };
+    if (failed.length) {
+      return {
+        success: false,
+        code: 'PARTIAL_SYNC',
+        error: failed.length + ' akun gagal disinkronkan. ' + (failed[0].error || ''),
+        data: { results },
+      };
+    }
+    return { success: true, data: { results } };
   }, [refetch]);
   const disconnect = useCallback(async (id: string) => {
     const result = await invokeApi('drive-disconnect', { accountId: id });

@@ -93,3 +93,69 @@ test('migration dry run does not mistake a copied legacy value for a migrated cr
  const r=await runtime('migrate-family-password/index.ts',{query:()=>({data:{user_id:A,owner_password:legacy,owner_password_v1:legacy},error:null})});
  assert.deepEqual((await r.call({familyId:'family',dryRun:true})).body.data,{recoverable:true});
 });
+test('low Drive storage (15GB or 5GB) auto-expires matching active families and logs audit trail',async()=>{
+ const c=await runtime('_shared/crypto.ts');const access=await c.exports.encrypt('synthetic-token');
+ const future=new Date(Date.now()+30*86400_000).toISOString();
+ const past=new Date(Date.now()-10*86400_000).toISOString();
+ const families=[
+  {id:'fam-active',name:'Family Active',owner_email:'Owner@Example.test',expiry_date:future},
+  {id:'fam-already-expired',name:'Family Old',owner_email:'owner@example.test',expiry_date:past},
+  {id:'fam-other',name:'Family Other',owner_email:'other@example.test',expiry_date:future},
+ ];
+ const r=await runtime('drive-sync-quota/index.ts',{
+  google:{getDriveQuota:async()=>({total_bytes:15*1024**3,used_bytes:2*1024**3,available_bytes:13*1024**3,trash_bytes:0}),refreshAccessToken:async()=>({})},
+  query:q=>{
+   if(q.table==='connected_accounts'&&q.action==='select')return{data:[{...expired,email:'owner@example.test',total_bytes:2048*1024**3,access_token_encrypted:access,token_expires_at:'2099-01-01'}],error:null};
+   if(q.table==='families'&&q.action==='select')return{data:families,error:null};
+   return{data:{id:q.table},error:null};
+  },
+ });
+ const result=await r.call({all:true});
+ assert.equal(result.status,200);
+ const item=result.body.data.results[0];
+ assert.equal(item.ok,true);
+ assert.equal(item.lowStorageTier,'15GB');
+ assert.deepEqual(item.expiredFamilies,[{id:'fam-active',name:'Family Active'}]);
+ const famUpdate=r.queries.find(q=>q.table==='families'&&q.action==='update');
+ assert.ok(famUpdate);
+ assert.ok(Date.parse(famUpdate.payload.expiry_date)<Date.now()-86400_000);
+ const audit=r.queries.find(q=>q.table==='app_audit_log'&&q.action==='insert');
+ assert.ok(audit);
+ assert.equal(audit.payload.length,1);
+ assert.equal(audit.payload[0].object_id,'fam-active');
+ assert.equal(audit.payload[0].action,'auto_expired_low_storage');
+ assert.equal(audit.payload[0].details.tier,'15GB');
+});
+test('5GB Drive quota on initial connect immediately expires matching active family',async()=>{
+ const r=await runtime('drive-complete-connect/index.ts',{
+  google:{
+   DRIVE_SCOPES:['openid','email','profile','https://www.googleapis.com/auth/drive.metadata.readonly'],
+   exchangeCode:async()=>({access_token:'tok',refresh_token:'ref',expires_in:3600,scope:'https://www.googleapis.com/auth/drive.metadata.readonly'}),
+   getUserInfo:async()=>({sub:'sub-1',email:'owner@example.test',name:'Owner'}),
+   getDriveQuota:async()=>({total_bytes:5*1024**3,used_bytes:1024**3,available_bytes:4*1024**3,trash_bytes:0}),
+  },
+  query:q=>{
+   if(q.table==='connected_accounts'&&q.action==='select')return{data:null,error:null};
+   if(q.table==='families'&&q.action==='select')return{data:[{id:'fam-5gb',name:'Family Five',owner_email:'owner@example.test',expiry_date:null}],error:null};
+   return{data:{id:'acc-1'},error:null};
+  },
+ });
+ const result=await r.call({state:'state',code:'code',browserNonce:'nonce'});
+ assert.equal(result.status,200);
+ assert.equal(result.body.data.lowStorageTier,'5GB');
+ assert.deepEqual(result.body.data.expiredFamilies,[{id:'fam-5gb',name:'Family Five'}]);
+ assert.ok(r.queries.some(q=>q.table==='families'&&q.action==='update'));
+});
+test('normal 2TB or unlimited Drive quota does not expire active families',async()=>{
+ const c=await runtime('_shared/crypto.ts');const access=await c.exports.encrypt('synthetic-token');
+ for(const total_bytes of [2*1024**4,null]){
+  const r=await runtime('drive-sync-quota/index.ts',{
+   google:{getDriveQuota:async()=>({total_bytes,used_bytes:1024**3,available_bytes:total_bytes?total_bytes-1024**3:null,trash_bytes:0}),refreshAccessToken:async()=>({})},
+   query:q=>q.table==='connected_accounts'&&q.action==='select'?{data:[{...expired,email:'owner@example.test',total_bytes:2*1024**4,access_token_encrypted:access,token_expires_at:'2099-01-01'}],error:null}:{data:{id:'acc'},error:null},
+  });
+  const result=await r.call({all:true});
+  assert.equal(result.body.data.results[0].lowStorageTier,null);
+  assert.deepEqual(result.body.data.results[0].expiredFamilies,[]);
+  assert.ok(!r.queries.some(q=>q.table==='families'));
+ }
+});

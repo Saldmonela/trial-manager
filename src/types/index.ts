@@ -184,9 +184,32 @@ export interface StorageAggregate {
   hasUnlimited: boolean;
 }
 
+export type LowStorageTier = '5GB' | '15GB';
+
+export interface ExpiredFamilySummary {
+  id: string;
+  name: string;
+}
+
+export interface SyncAccountResult {
+  id: string;
+  ok: boolean;
+  email?: string | null;
+  lowStorageTier?: LowStorageTier | null;
+  expiredFamilies?: ExpiredFamilySummary[];
+  code?: string;
+  error?: string;
+}
+
+export interface SyncQuotaData {
+  results: SyncAccountResult[];
+}
+
 export interface JustConnectedDrive {
   accountId: string;
   intent: string | null;
+  lowStorageTier?: LowStorageTier | null;
+  expiredFamilies?: ExpiredFamilySummary[];
 }
 
 export interface UseConnectedAccountsReturn {
@@ -197,8 +220,8 @@ export interface UseConnectedAccountsReturn {
   justConnected?: JustConnectedDrive | null;
   clearJustConnected?: () => void;
   connectGoogleDrive: (path?: '/admin' | '/storage', loginHint?: string, intent?: string) => Promise<ActionResult>;
-  syncQuota: (id: string) => Promise<ActionResult>;
-  syncAll: () => Promise<ActionResult>;
+  syncQuota: (id: string) => Promise<ActionResult<SyncQuotaData>>;
+  syncAll: () => Promise<ActionResult<SyncQuotaData>>;
   disconnect: (id: string) => Promise<ActionResult>;
   refetch: () => Promise<void>;
 }

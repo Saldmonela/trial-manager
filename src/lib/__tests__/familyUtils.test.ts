@@ -13,6 +13,8 @@ import {
   getPresetBaseDate,
   addMonthsISODate,
   formatDuration,
+  detectLowStorageTier,
+  getLowStorageAlerts,
 } from '../familyUtils';
 
 describe('familyUtils', () => {
@@ -250,6 +252,67 @@ describe('familyUtils', () => {
 
     it('returns empty string for an invalid base', () => {
       expect(addMonthsISODate(new Date('nope'), 12)).toBe('');
+    });
+  });
+
+  describe('detectLowStorageTier', () => {
+    it('detects 5 GB and 15 GB in both binary GiB and decimal GB', () => {
+      expect(detectLowStorageTier(5 * 1024 ** 3)).toBe('5GB');
+      expect(detectLowStorageTier(5_000_000_000)).toBe('5GB');
+      expect(detectLowStorageTier(15 * 1024 ** 3)).toBe('15GB');
+      expect(detectLowStorageTier(15_000_000_000)).toBe('15GB');
+    });
+
+    it('returns null for normal, unlimited, zero, or invalid quotas', () => {
+      expect(detectLowStorageTier(2 * 1024 ** 4)).toBeNull();
+      expect(detectLowStorageTier(100 * 1024 ** 3)).toBeNull();
+      expect(detectLowStorageTier(30 * 1024 ** 3)).toBeNull();
+      expect(detectLowStorageTier(null)).toBeNull();
+      expect(detectLowStorageTier(undefined)).toBeNull();
+      expect(detectLowStorageTier(0)).toBeNull();
+      expect(detectLowStorageTier(-10)).toBeNull();
+    });
+  });
+
+  describe('getLowStorageAlerts', () => {
+    const sampleResults = [
+      {
+        id: 'acc-1',
+        ok: true,
+        email: 'owner1@example.test',
+        lowStorageTier: '15GB',
+        expiredFamilies: [{ id: 'f1', name: 'Family One' }],
+      },
+      {
+        id: 'acc-2',
+        ok: true,
+        email: 'owner2@example.test',
+        lowStorageTier: '5GB',
+        expiredFamilies: [],
+      },
+      {
+        id: 'acc-3',
+        ok: true,
+        email: 'healthy@example.test',
+        lowStorageTier: null,
+        expiredFamilies: [],
+      },
+    ];
+
+    it('returns all low storage alerts on manual sync', () => {
+      const alerts = getLowStorageAlerts(sampleResults);
+      expect(alerts).toHaveLength(2);
+      expect(alerts[0].message).toContain('owner1@example.test');
+      expect(alerts[0].message).toContain('15GB');
+      expect(alerts[0].message).toContain('Family One');
+      expect(alerts[0].hasNewlyExpired).toBe(true);
+      expect(alerts[1].hasNewlyExpired).toBe(false);
+    });
+
+    it('filters to only newly expired families when onlyNewlyExpired is true', () => {
+      const alerts = getLowStorageAlerts(sampleResults, { onlyNewlyExpired: true });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0].id).toBe('acc-1');
     });
   });
 });

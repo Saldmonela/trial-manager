@@ -7,6 +7,50 @@ import { translations } from '../constants/translations';
 export const MAX_FAMILY_SLOTS = 5;
 export const MAX_STORAGE_GB = 5120;
 
+const GB_BYTES = 1_000_000_000;
+const GIB_BYTES = 1024 * 1024 * 1024;
+
+/**
+ * Mendeteksi apakah kuota total Google Drive berada di tier bermasalah (5 GB atau 15 GB).
+ * Mengembalikan '5GB', '15GB', atau null bila kuota normal atau unlimited.
+ */
+export function detectLowStorageTier(totalBytes) {
+  if (totalBytes === null || totalBytes === undefined) return null;
+  const n = Number(totalBytes);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  if (n >= 4.9 * GB_BYTES && n <= 5.1 * GIB_BYTES) return '5GB';
+  if (n >= 14.9 * GB_BYTES && n <= 15.1 * GIB_BYTES) return '15GB';
+  return null;
+}
+
+/**
+ * Merangkum hasil sinkronisasi yang terdeteksi bermasalah (5 GB / 15 GB)
+ * beserta family yang baru diubah menjadi expired.
+ */
+export function getLowStorageAlerts(results = [], { onlyNewlyExpired = false } = {}) {
+  if (!Array.isArray(results)) return [];
+  const alerts = [];
+  for (const item of results) {
+    if (!item?.ok || !item.lowStorageTier) continue;
+    const expiredFamilies = Array.isArray(item.expiredFamilies) ? item.expiredFamilies : [];
+    if (onlyNewlyExpired && expiredFamilies.length === 0) continue;
+    const familyNames = expiredFamilies.map((f) => f.name).filter(Boolean);
+    const label = item.email || 'Google Drive';
+    const message = expiredFamilies.length > 0
+      ? `Storage ${label} turun ke ${item.lowStorageTier}! Masa berlaku ${familyNames.join(', ')} otomatis diubah menjadi EXPIRED.`
+      : `Storage ${label} terdeteksi ${item.lowStorageTier} (akun bermasalah).`;
+    alerts.push({
+      id: item.id,
+      email: item.email || null,
+      tier: item.lowStorageTier,
+      expiredFamilies,
+      hasNewlyExpired: expiredFamilies.length > 0,
+      message,
+    });
+  }
+  return alerts;
+}
+
 export function generateId() {
   return crypto.randomUUID?.() || Math.random().toString(36).substring(2, 15);
 }

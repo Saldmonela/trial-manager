@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { RefreshCw, Trash2, AlertCircle, Cloud } from 'lucide-react';
+import { RefreshCw, Trash2, AlertCircle, Cloud, AlertTriangle } from 'lucide-react';
 import { cn, formatBytes } from '../../utils';
+import { detectLowStorageTier } from '../../lib/familyUtils';
 
 function timeAgo(iso) {
   if (!iso) return 'never';
@@ -28,6 +29,7 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
 
   const isUnlimited = account.totalBytes === null;
   const isDisconnected = account.status === 'disconnected';
+  const lowStorageTier = detectLowStorageTier(account.totalBytes);
 
   // Mode simulasi: used = simulatePct% dari total akun ASLI (untuk pratinjau warna).
   const simulating = simulatePct != null && !isUnlimited && account.totalBytes > 0;
@@ -36,12 +38,14 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
     ? Math.min(100, (usedBytes / account.totalBytes) * 100)
     : 0;
 
-  const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
-  const pctTextColor = pct >= 90
+  const barColor = lowStorageTier ? 'bg-red-500' : pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+  const pctTextColor = lowStorageTier
     ? 'text-red-500'
-    : pct >= 70
-      ? 'text-amber-500'
-      : (isDark ? 'text-emerald-400' : 'text-emerald-600');
+    : pct >= 90
+      ? 'text-red-500'
+      : pct >= 70
+        ? 'text-amber-500'
+        : (isDark ? 'text-emerald-400' : 'text-emerald-600');
 
   const handleSync = async () => {
     setSyncing(true);
@@ -61,7 +65,9 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
       exit={{ opacity: 0, scale: 0.96 }}
       className={cn(
         'relative overflow-hidden border p-5 flex flex-col gap-4',
-        isDark ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-200',
+        lowStorageTier
+          ? (isDark ? 'bg-red-950/20 border-red-800/80' : 'bg-red-50/40 border-red-300')
+          : (isDark ? 'bg-stone-900 border-stone-800' : 'bg-white border-stone-200'),
         isDisconnected && 'opacity-70',
       )}
     >
@@ -87,6 +93,11 @@ export default function ConnectedAccountCard({ theme, account, onSync, onDisconn
             </span>
           )}
         </div>
+        {lowStorageTier && !isDisconnected && (
+          <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase tracking-widest font-bold text-red-600 dark:text-red-400 border border-red-500/40 bg-red-500/10 shrink-0">
+            <AlertTriangle className="w-3 h-3" /> Bermasalah · {lowStorageTier}
+          </span>
+        )}
         {isDisconnected && (
           <span className="flex items-center gap-1 px-2 py-0.5 text-[10px] uppercase tracking-widest font-bold text-red-500 border border-red-500/40 bg-red-500/10">
             <AlertCircle className="w-3 h-3" /> Reconnect

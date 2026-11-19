@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { Cloud, Check, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { Cloud, Check, Eye, EyeOff, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useTheme } from '../../context/ThemeContext';
 import { useLanguage } from '../../context/LanguageContext';
-import { generateId, FAMILY_EXPIRY_PRESETS, addMonthsISODate } from '../../lib/familyUtils';
+import { generateId, FAMILY_EXPIRY_PRESETS, addMonthsISODate, detectLowStorageTier } from '../../lib/familyUtils';
 import Modal from './Modal';
 import FormField from '../ui/FormField';
 import { useAsyncForm } from '../../hooks/useAsyncForm';
@@ -153,6 +153,12 @@ export default function AddFamilyModal({
                     </span>
                   </div>
                   <p className="font-medium text-sm truncate">{linkedAccount.email}</p>
+                  {detectLowStorageTier(linkedAccount.totalBytes) && (
+                    <p className="flex items-center gap-1.5 text-[11px] font-semibold text-red-600 dark:text-red-400">
+                      <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+                      Peringatan: Kapasitas Drive {detectLowStorageTier(linkedAccount.totalBytes)} (akun terindikasi bermasalah).
+                    </p>
+                  )}
                   <p className={cn("text-[11px]", theme === 'light' ? "text-stone-600" : "text-stone-400")}>
                     Email & kuota sudah terisi otomatis. Pilih masa aktif lalu isi password akun di bawah.
                   </p>

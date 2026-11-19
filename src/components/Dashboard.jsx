@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Users, Crown, Search, Check } from 'lucide-react';
 import { cn } from '../utils';
-import { isFamilyFull, getSlotsAvailable, getDaysRemaining } from '../lib/familyUtils';
+import { isFamilyFull, getSlotsAvailable, getDaysRemaining, getLowStorageAlerts } from '../lib/familyUtils';
 import { useSupabaseData } from '../hooks/useSupabaseData';
 import { useConnectedAccounts } from '../hooks/useConnectedAccounts';
 import { useToast } from '../hooks/useToast';
@@ -28,6 +28,8 @@ const SettingsModal = lazy(() => import('./modals/SettingsModal'));
 import ToastContainer from './ui/ToastContainer';
 import MigrationBanner from './ui/MigrationBanner';
 
+const DRIVE_AUTO_SYNC_INTERVAL_MS = 5 * 60 * 1000;
+
 export default function Dashboard({ onLogout }) {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -51,6 +53,7 @@ export default function Dashboard({ onLogout }) {
   // --- Google Drive integration (kuota asli di kartu) ---
   const {
     accounts: connectedAccounts,
+    loading: accountsLoading,
     justConnected,
     clearJustConnected,
     connectGoogleDrive, error: driveError,
@@ -61,6 +64,10 @@ export default function Dashboard({ onLogout }) {
   } = useConnectedAccounts();
   const [searchParams] = useSearchParams();
   const driveParamHandled = useRef(false);
+  const autoSyncInFlightRef = useRef(false);
+  const lastAutoSyncAtRef = useRef(0);
+  const connectedAccountsRef = useRef(connectedAccounts);
+  connectedAccountsRef.current = connectedAccounts;
 
   // Tangani redirect balik dari OAuth (mendarat di /admin saat connect dari kartu).
   useEffect(() => {
@@ -89,10 +96,26 @@ export default function Dashboard({ onLogout }) {
     return result;
   }, [connectGoogleDrive, addToast]);
 
+  const notifyLowStorageResults = useCallback((results, { isAuto = false } = {}) => {
+    const alerts = getLowStorageAlerts(results, { onlyNewlyExpired: isAuto });
+    if (alerts.some((a) => a.hasNewlyExpired)) {
+      void refetchFamilies?.();
+    }
+    for (const alert of alerts) {
+      addToast(alert.message, alert.hasNewlyExpired ? 'error' : 'warning', 8000);
+    }
+    return alerts;
+  }, [refetchFamilies, addToast]);
+
   const handleSyncDrive = useCallback(async (id) => {
     const r = await syncQuota(id);
-    addToast(r.success ? 'Quota Drive ter-sync' : (r.error || 'Sync gagal'), r.success ? 'success' : 'error');
-  }, [syncQuota, addToast]);
+    const alerts = notifyLowStorageResults(r?.data?.results, { isAuto: false });
+    if (r.success && alerts.length === 0) {
+      addToast('Quota Drive ter-sync', 'success');
+    } else if (!r.success) {
+      addToast(r.error || 'Sync gagal', 'error');
+    }
+  }, [syncQuota, notifyLowStorageResults, addToast]);
 
   const handleDisconnectDrive = useCallback(async (id) => {
     const r = await disconnectDrive(id);
@@ -101,8 +124,46 @@ export default function Dashboard({ onLogout }) {
 
   const handleSyncAllDrives = useCallback(async () => {
     const r = await syncAll();
-    addToast(r.success ? 'Semua Drive ter-sync' : (r.error || 'Sync gagal'), r.success ? 'success' : 'error');
-  }, [syncAll, addToast]);
+    const alerts = notifyLowStorageResults(r?.data?.results, { isAuto: false });
+    if (r.success && alerts.length === 0) {
+      addToast('Semua Drive ter-sync', 'success');
+    } else if (!r.success) {
+      addToast(r.error || 'Sync gagal', 'error');
+    }
+  }, [syncAll, notifyLowStorageResults, addToast]);
+
+  const runAutoDriveSync = useCallback(async (forceStaleCheck = true) => {
+    if (autoSyncInFlightRef.current) return;
+    const activeAccounts = connectedAccountsRef.current.filter((a) => a.status === 'connected');
+    if (activeAccounts.length === 0) return;
+    const now = Date.now();
+    if (now - lastAutoSyncAtRef.current < DRIVE_AUTO_SYNC_INTERVAL_MS) return;
+    if (forceStaleCheck) {
+      const hasStale = activeAccounts.some(
+        (a) => !a.lastSyncedAt || now - Date.parse(a.lastSyncedAt) >= DRIVE_AUTO_SYNC_INTERVAL_MS,
+      );
+      if (!hasStale) return;
+    }
+    autoSyncInFlightRef.current = true;
+    lastAutoSyncAtRef.current = now;
+    try {
+      const r = await syncAll();
+      notifyLowStorageResults(r?.data?.results, { isAuto: true });
+    } finally {
+      autoSyncInFlightRef.current = false;
+    }
+  }, [syncAll, notifyLowStorageResults]);
+
+  useEffect(() => {
+    if (accountsLoading) return;
+    void runAutoDriveSync(true);
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        void runAutoDriveSync(false);
+      }
+    }, DRIVE_AUTO_SYNC_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [accountsLoading, runAutoDriveSync]);
 
   const [isAddFamilyOpen, setIsAddFamilyOpen] = useState(false);
   const handledDriveToastRef = useRef(null);
@@ -136,6 +197,18 @@ export default function Dashboard({ onLogout }) {
     if (!acct || handledDriveToastRef.current === justConnected.accountId) return;
     handledDriveToastRef.current = justConnected.accountId;
 
+    if (justConnected.expiredFamilies?.length > 0) {
+      void refetchFamilies?.();
+      const names = justConnected.expiredFamilies.map((f) => f.name).filter(Boolean).join(', ');
+      addToast(
+        `Storage ${acct.email || 'Drive'} terdeteksi ${justConnected.lowStorageTier}! Masa berlaku ${names} otomatis diubah menjadi EXPIRED.`,
+        'error',
+        8000,
+      );
+      clearJustConnected?.();
+      return;
+    }
+
     if (justConnected.intent === 'add-family') {
       const existing = acct.email
         ? families.find((f) => !f.isBanned && f.ownerEmail?.toLowerCase() === acct.email.toLowerCase())
@@ -150,7 +223,7 @@ export default function Dashboard({ onLogout }) {
       addToast('Google Drive berhasil terhubung', 'success');
       clearJustConnected?.();
     }
-  }, [justConnected, loading, connectedAccounts, families, clearJustConnected, addToast]);
+  }, [justConnected, loading, connectedAccounts, families, clearJustConnected, addToast, refetchFamilies]);
   const [editFamily, setEditFamily] = useState(null);
   const [showTutorial, setShowTutorial] = useState(false);
   const [addMemberFamilyId, setAddMemberFamilyId] = useState(null);

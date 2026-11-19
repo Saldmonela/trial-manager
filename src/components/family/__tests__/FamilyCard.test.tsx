@@ -72,4 +72,94 @@ describe('FamilyCard badge sisa masa aktif', () => {
     renderCard(inDays(519));
     expect(screen.getByText('1 YEAR 5 MONTHS')).toBeInTheDocument();
   });
+
+  it('menampilkan alert akun bermasalah saat storage Drive turun ke 15GB atau 5GB', () => {
+    const noop = vi.fn();
+    render(
+      <FamilyCard
+        family={{ id: 'f1', name: 'Family 19', ownerEmail: 'owner@example.test', expiryDate: inDays(-2), members: [] }}
+        connectedAccounts={[{
+          id: 'acc-1',
+          provider: 'google_drive',
+          providerAccountId: 'sub-1',
+          email: 'owner@example.test',
+          displayName: 'Owner',
+          avatarUrl: null,
+          status: 'connected',
+          totalBytes: 15 * 1024 ** 3,
+          usedBytes: 2 * 1024 ** 3,
+          availableBytes: 13 * 1024 ** 3,
+          trashBytes: 0,
+          lastSyncedAt: TODAY.toISOString(),
+        }]}
+        onDelete={noop}
+        onEdit={noop}
+        onAddMember={noop}
+        onRemoveMember={noop}
+        onEditMember={noop}
+        onCancelSale={noop}
+        onRequest={noop}
+        onConnectDrive={noop}
+        onSyncDrive={noop}
+        onDisconnectDrive={noop}
+      />,
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Akun Bermasalah (Storage 15GB)');
+    expect(screen.getByText('Drive Bermasalah · 15GB')).toBeInTheDocument();
+    expect(screen.getByText('EXPIRED')).toBeInTheDocument();
+  });
+
+  it('tidak menampilkan alert Drive bermasalah saat mode readOnly atau storage 2TB normal', () => {
+    const noop = vi.fn();
+    const { rerender } = render(
+      <FamilyCard
+        family={{ id: 'f1', name: 'Family 19', ownerEmail: 'owner@example.test', expiryDate: inDays(60), members: [] }}
+        connectedAccounts={[{
+          id: 'acc-1',
+          provider: 'google_drive',
+          providerAccountId: 'sub-1',
+          email: 'owner@example.test',
+          displayName: 'Owner',
+          avatarUrl: null,
+          status: 'connected',
+          totalBytes: 2 * 1024 ** 4,
+          usedBytes: 500 * 1024 ** 3,
+          availableBytes: 1548 * 1024 ** 3,
+          trashBytes: 0,
+          lastSyncedAt: TODAY.toISOString(),
+        }]}
+        onDelete={noop}
+        onEdit={noop}
+        onAddMember={noop}
+        onRemoveMember={noop}
+        onEditMember={noop}
+        onCancelSale={noop}
+        onRequest={noop}
+        onConnectDrive={noop}
+        onSyncDrive={noop}
+        onDisconnectDrive={noop}
+      />,
+    );
+    expect(screen.queryByText(/Akun Bermasalah/)).not.toBeInTheDocument();
+    expect(screen.getByText('Drive Connected')).toBeInTheDocument();
+
+    rerender(
+      <FamilyCard
+        readOnly
+        family={{ id: 'f1', name: 'Family 19', ownerEmail: 'owner@example.test', expiryDate: inDays(60), members: [] }}
+        connectedAccounts={[]}
+        onDelete={noop}
+        onEdit={noop}
+        onAddMember={noop}
+        onRemoveMember={noop}
+        onEditMember={noop}
+        onCancelSale={noop}
+        onRequest={noop}
+        onConnectDrive={noop}
+        onSyncDrive={noop}
+        onDisconnectDrive={noop}
+      />,
+    );
+    expect(screen.queryByText(/Akun Bermasalah/)).not.toBeInTheDocument();
+  });
 });

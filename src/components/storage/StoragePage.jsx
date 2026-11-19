@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { ChevronLeft, RefreshCw, Cloud, Info, FlaskConical, HardDrive } from 'lucide-react';
 import { cn } from '../../utils';
+import { getLowStorageAlerts } from '../../lib/familyUtils';
 import { supabase } from '../../supabaseClient';
 import { useTheme } from '../../context/ThemeContext';
 import { useToast } from '../../hooks/useToast';
@@ -169,13 +170,29 @@ export default function StoragePage() {
 
   const handleSync = async (id) => {
     const res = await syncQuota(id);
-    addToast(res.success ? 'Quota synced' : (res.error || 'Sync failed'), res.success ? 'success' : 'error');
+    const alerts = getLowStorageAlerts(res?.data?.results);
+    for (const alert of alerts) {
+      addToast(alert.message, alert.hasNewlyExpired ? 'error' : 'warning', 8000);
+    }
+    if (res.success && alerts.length === 0) {
+      addToast('Quota synced', 'success');
+    } else if (!res.success) {
+      addToast(res.error || 'Sync failed', 'error');
+    }
     return res;
   };
 
   const handleSyncAll = async () => {
     const res = await syncAll();
-    addToast(res.success ? 'All accounts synced' : (res.error || 'Sync failed'), res.success ? 'success' : 'error');
+    const alerts = getLowStorageAlerts(res?.data?.results);
+    for (const alert of alerts) {
+      addToast(alert.message, alert.hasNewlyExpired ? 'error' : 'warning', 8000);
+    }
+    if (res.success && alerts.length === 0) {
+      addToast('All accounts synced', 'success');
+    } else if (!res.success) {
+      addToast(res.error || 'Sync failed', 'error');
+    }
   };
 
   const handleDisconnect = async (id) => {

@@ -3,9 +3,10 @@ import { serviceClient } from '../_shared/supabase.ts';
 import { getDriveQuota, refreshAccessToken } from '../_shared/google.ts';
 import { GoogleError } from '../_shared/drive-errors.ts';
 import { encrypt, decrypt } from '../_shared/crypto.ts';
+import { expireFamiliesForLowStorage } from '../_shared/low-storage.ts';
 Deno.serve(endpoint(async req => {
   const actor = await requireAdmin(req); const body = await readBody(req); const svc = serviceClient();
-  let query = svc.from('connected_accounts').select('id,access_token_encrypted,refresh_token_encrypted,token_expires_at').eq('user_id', actor.id).eq('provider', 'google_drive').eq('status', 'connected');
+  let query = svc.from('connected_accounts').select('id,email,total_bytes,access_token_encrypted,refresh_token_encrypted,token_expires_at').eq('user_id', actor.id).eq('provider', 'google_drive').eq('status', 'connected');
   if (body.all !== true) {
     if (typeof body.accountId !== 'string') throw new ApiError('INVALID_INPUT', 'Pilih akun.');
     query = query.eq('id', body.accountId);
@@ -38,7 +39,20 @@ Deno.serve(endpoint(async req => {
         if (!(failure instanceof GoogleError) || failure.status !== 401 || refreshed) throw failure;
         token = await refresh(); quota = await getDriveQuota(token);
       }
-      await save({ ...quota, last_synced_at: new Date().toISOString() }); results.push({ id: account.id, ok: true });
+      await save({ ...quota, last_synced_at: new Date().toISOString() });
+      const detection = await expireFamiliesForLowStorage(svc, {
+        actorId: actor.id,
+        email: account.email,
+        totalBytes: quota.total_bytes,
+        previousTotalBytes: account.total_bytes ?? null,
+      });
+      results.push({
+        id: account.id,
+        ok: true,
+        email: account.email ?? null,
+        lowStorageTier: detection.lowStorageTier,
+        expiredFamilies: detection.expiredFamilies,
+      });
     } catch (failure) {
       results.push({ id: account.id, ok: false, code: failure instanceof ApiError ? failure.code : 'SYNC_UNAVAILABLE', error: failure instanceof ApiError ? failure.message : 'Google sedang tidak tersedia. Coba lagi.' });
     }
