@@ -209,6 +209,17 @@ export default function Dashboard({ onLogout }) {
       return;
     }
 
+    if (justConnected.createdFamily) {
+      void refetchFamilies?.();
+      addToast(
+        `Akun ${acct.email || 'Google'} terhubung & otomatis dibuatkan ${justConnected.createdFamily.name} (password masih kosong).`,
+        'success',
+        6000,
+      );
+      clearJustConnected?.();
+      return;
+    }
+
     if (justConnected.intent === 'add-family') {
       const existing = acct.email
         ? families.find((f) => !f.isBanned && f.ownerEmail?.toLowerCase() === acct.email.toLowerCase())

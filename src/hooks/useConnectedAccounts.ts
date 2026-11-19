@@ -19,6 +19,7 @@ type ConnectCompletionData = {
   totalBytes?: number | null;
   usedBytes?: number;
   intent?: string | null;
+  createdFamily?: { id: string; name: string } | null;
   lowStorageTier?: LowStorageTier | null;
   expiredFamilies?: ExpiredFamilySummary[];
 };
@@ -70,6 +71,7 @@ export async function completeDriveConnection(): Promise<ActionResult<ConnectCom
     displayName?: string | null;
     totalBytes?: number | null;
     usedBytes?: number;
+    createdFamily?: { id: string; name: string } | null;
     lowStorageTier?: LowStorageTier | null;
     expiredFamilies?: ExpiredFamilySummary[];
   }>('drive-complete-connect', payload)
@@ -82,6 +84,7 @@ export async function completeDriveConnection(): Promise<ActionResult<ConnectCom
         totalBytes: res.data?.totalBytes ?? null,
         usedBytes: res.data?.usedBytes,
         intent,
+        createdFamily: res.data?.createdFamily ?? null,
         lowStorageTier: res.data?.lowStorageTier ?? null,
         expiredFamilies: res.data?.expiredFamilies ?? [],
       },
@@ -123,6 +126,7 @@ export function useConnectedAccounts(): UseConnectedAccountsReturn {
         setJustConnected({
           accountId: result.data.id,
           intent: result.data.intent ?? null,
+          createdFamily: result.data.createdFamily ?? null,
           lowStorageTier: result.data.lowStorageTier ?? null,
           expiredFamilies: result.data.expiredFamilies ?? [],
         });

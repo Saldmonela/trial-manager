@@ -22,6 +22,75 @@ Deno.serve(endpoint(async req => {
     scopes, status: 'connected', ...quota, last_synced_at: new Date().toISOString(),
   }, { onConflict: 'user_id,provider,provider_account_id' }).select('id').single();
   checkDb(saveError); if (!data) throw new ApiError('SAVE_FAILED', 'Koneksi tidak tersimpan.', 500);
+
+  // Jika email belum terhubung ke family aktif mana pun (baik sebagai owner maupun member),
+  // otomatis buat family baru dengan password kosong (diisi manual oleh admin nanti).
+  let createdFamily: { id: string; name: string } | null = null;
+  const normalizedEmail = typeof profile.email === 'string' ? profile.email.trim().toLowerCase() : '';
+  if (normalizedEmail) {
+    const { data: existingFamilies, error: famFetchError } = await svc
+      .from('families')
+      .select('id,name,owner_email,members(email)')
+      .is('archived_at', null);
+    checkDb(famFetchError);
+
+    const rows = (existingFamilies ?? []) as Array<{
+      id: string;
+      name: string | null;
+      owner_email: string | null;
+      members?: Array<{ email?: string | null }> | null;
+    }>;
+
+    const alreadyLinked = rows.some((f) => {
+      if (typeof f.owner_email === 'string' && f.owner_email.trim().toLowerCase() === normalizedEmail) {
+        return true;
+      }
+      return (f.members ?? []).some(
+        (m) => typeof m?.email === 'string' && m.email.trim().toLowerCase() === normalizedEmail,
+      );
+    });
+
+    if (!alreadyLinked) {
+      let maxNum = 0;
+      for (const f of rows) {
+        const match = typeof f.name === 'string' ? f.name.trim().match(/^Family\s+(\d+)$/i) : null;
+        if (match) {
+          const num = Number(match[1]);
+          if (Number.isFinite(num) && num > maxNum) maxNum = num;
+        }
+      }
+      const nextName = `Family ${maxNum + 1}`;
+      const newFamilyId = crypto.randomUUID();
+      const { error: createFamilyError } = await svc.from('families').insert({
+        id: newFamilyId,
+        user_id: actor.id,
+        name: nextName,
+        owner_email: normalizedEmail,
+        owner_password: null,
+        owner_password_v1: null,
+        expiry_date: null,
+        storage_used: 0,
+        notes: '',
+        product_type: 'slot',
+        currency: 'IDR',
+        is_banned: false,
+        is_public: true,
+        is_active: true,
+      });
+      checkDb(createFamilyError);
+
+      await svc.from('app_audit_log').insert({
+        actor_id: actor.id,
+        object_type: 'family',
+        object_id: newFamilyId,
+        action: 'auto_created_from_drive',
+        details: { email: normalizedEmail, name: nextName },
+      });
+
+      createdFamily = { id: newFamilyId, name: nextName };
+    }
+  }
+
   const detection = await expireFamiliesForLowStorage(svc, {
     actorId: actor.id,
     email: profile.email ?? null,
@@ -33,6 +102,7 @@ Deno.serve(endpoint(async req => {
     displayName: profile.name ?? null,
     totalBytes: quota.total_bytes,
     usedBytes: quota.used_bytes,
+    createdFamily,
     lowStorageTier: detection.lowStorageTier,
     expiredFamilies: detection.expiredFamilies,
   };

@@ -782,25 +782,46 @@ function FamilyCard({ family, allFamilies = [], onDelete, onEdit, onAddMember, o
                 <Lock className={cn("w-4 h-4", theme === 'light' ? "text-stone-400" : "text-stone-600")} />
               </div>
               {passwordError && <p role="alert" className="col-span-3 text-xs text-red-500">{passwordError}</p>}
-              <span className={cn("text-sm font-mono min-w-0 truncate", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
-                {showPassword ? passwordValue : '••••••••••'}
-              </span>
-              <div className="flex items-center justify-end gap-5 shrink-0">
-                <button
-                  disabled={passwordBusy}
-                  onClick={togglePassword}
-                  className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
-                >
-                  {showPassword ? t('common.hide') : t('common.show')}
-                </button>
-                <button
-                  disabled={passwordBusy}
-                  onClick={copyPassword}
-                  className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
-                >
-                  {copied === 'password' ? t('common.copied') : t('common.copy')}
-                </button>
-              </div>
+              {family.credentialStatus === 'missing' && !family.ownerPassword ? (
+                <>
+                  <span className={cn("text-xs italic min-w-0 truncate", theme === 'light' ? "text-amber-700" : "text-amber-400")}>
+                    Password belum diisi
+                  </span>
+                  <div className="flex items-center justify-end gap-5 shrink-0">
+                    {onEdit && (
+                      <button
+                        type="button"
+                        onClick={() => onEdit(family)}
+                        className={cn("text-xs uppercase tracking-wider hover:underline font-semibold", theme === 'light' ? "text-gold-600" : "text-gold-400")}
+                      >
+                        Isi
+                      </button>
+                    )}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <span className={cn("text-sm font-mono min-w-0 truncate", theme === 'light' ? "text-stone-500" : "text-stone-400")}>
+                    {showPassword ? passwordValue : '••••••••••'}
+                  </span>
+                  <div className="flex items-center justify-end gap-5 shrink-0">
+                    <button
+                      disabled={passwordBusy}
+                      onClick={togglePassword}
+                      className={cn("text-xs uppercase tracking-wider hover:underline", theme === 'light' ? "text-stone-400" : "text-stone-500")}
+                    >
+                      {showPassword ? t('common.hide') : t('common.show')}
+                    </button>
+                    <button
+                      disabled={passwordBusy}
+                      onClick={copyPassword}
+                      className={cn("text-xs uppercase tracking-wider hover:underline font-medium", theme === 'light' ? "text-gold-600" : "text-gold-400")}
+                    >
+                      {copied === 'password' ? t('common.copied') : t('common.copy')}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         )}

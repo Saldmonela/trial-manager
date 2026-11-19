@@ -195,6 +195,24 @@ export default function DirectConnectPage() {
                 )}
               </div>
 
+              {connected.createdFamily && (
+                <div
+                  role="status"
+                  className={cn(
+                    'p-3 border text-left text-xs flex items-start gap-2',
+                    isLight
+                      ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                      : 'bg-emerald-950/30 border-emerald-900 text-emerald-200',
+                  )}
+                >
+                  <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-emerald-500" />
+                  <span>
+                    Otomatis dibuatkan family baru:{' '}
+                    <span className="font-bold">{connected.createdFamily.name}</span>. Password masih kosong — silakan isi di <span className="font-mono">/admin</span>.
+                  </span>
+                </div>
+              )}
+
               {connected.expiredFamilies?.length > 0 && (
                 <div
                   role="status"

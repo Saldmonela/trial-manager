@@ -208,6 +208,7 @@ export interface SyncQuotaData {
 export interface JustConnectedDrive {
   accountId: string;
   intent: string | null;
+  createdFamily?: { id: string; name: string } | null;
   lowStorageTier?: LowStorageTier | null;
   expiredFamilies?: ExpiredFamilySummary[];
 }
